@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 公开数据目录</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/" class="active">目录</a>
+      <a href="/index.json">index.json</a>
+      <a href="/admin">管理后台</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai · 兰台</p>
+      <h1>公开数据发布与共享平台</h1>
+      <p class="lede">
+        兰台，取自《汉书·百官公卿表》，喻数据典藏之机构。本平台以不可变 JSON Schema 编目、
+        以数据集级不可变快照发布，任何人可匿名贡献，管理员审阅后合并发布。
+      </p>
+    </header>
+
+    <section class="card">
+      <h2 style="margin-top:0">数据目录</h2>
+      <p class="note">目录索引为静态文件 <code>/index.json</code>，读取完全绕开 Worker。</p>
+      <table>
+        <thead><tr><th>slug</th><th>标题</th><th>当前 Schema</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="3">加载中…</td></tr></tbody>
+      </table>
+    </section>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · Cloudflare 免费额度 · 读取零计算</footer>
+  </div>
+
+  <script>
+    fetch("/index.json")
+      .then((r) => (r.ok ? r.json() : { datasets: [] }))
+      .then((catalog) => {
+        const rows = (catalog.datasets || [])
+          .map(
+            (d) =>
+              `<tr><td><a href="/${d.slug}/manifest.json">${d.slug}</a></td><td>${d.title}</td><td><span class="pill frozen">${d.currentSchemaVersion ?? "-"}</span></td></tr>`,
+          )
+          .join("");
+        document.getElementById("rows").innerHTML =
+          rows || '<tr><td colspan="3">暂无已发布数据集</td></tr>';
+      })
+      .catch(() => {
+        document.getElementById("rows").innerHTML =
+          '<tr><td colspan="3">目录索引暂不可用</td></tr>';
+      });
+  </script>
+</body>
+</html>
