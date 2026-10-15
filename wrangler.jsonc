@@ -38,6 +38,31 @@
     "IP_HASH_SALT": "dev-salt"
   },
   "env": {
+    "test": {
+      "name": "lantai-test",
+      "vars": {
+        "ENVIRONMENT": "test",
+        "ALLOW_DEV_STATIC": "true",
+        "SKIP_ACCESS_DEV": "true",
+        "TURNSTILE_SITE_KEY": "",
+        "IP_HASH_SALT": "dev-salt"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "lantai-test",
+          "database_id": "6c013211-e179-4644-8527-08a5d190f470",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "BUCKET",
+          "bucket_name": "lantai-test",
+          "preview_bucket_name": "lantai-test-preview"
+        }
+      ]
+    },
     "preprod": {
       "name": "lantai-preprod",
       "vars": {
