@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 管理后台</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/" class="active">兰台 · 管理</a>
+      <a href="/api/admin/catalog" target="_blank">目录索引 (JSON)</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai Admin · 编目</p>
+      <h1>Schema 注册与冻结</h1>
+      <p class="lede">注册数据集并提交首个 Schema 草稿，冻结后写入 R2 静态发布物；冻结后的版本不可覆盖。</p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h3>1 · 注册数据集</h3>
+        <label for="reg-slug">slug</label>
+        <input id="reg-slug" placeholder="demo" />
+        <label for="reg-title">标题</label>
+        <input id="reg-title" placeholder="示例数据集" />
+        <label for="reg-schema">JSON Schema（首个版本 1.0.0）</label>
+        <textarea id="reg-schema">{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "title": "名称" },
+    "value": { "type": "number", "title": "数值" }
+  },
+  "required": ["name"]
+}</textarea>
+        <button type="button" id="reg-btn">注册数据集</button>
+      </div>
+
+      <div class="card">
+        <h3>2 · 追加 Schema 版本</h3>
+        <label for="ver-dataset">数据集</label>
+        <select id="ver-dataset"></select>
+        <label for="ver-version">版本号（x.y.z）</label>
+        <input id="ver-version" placeholder="1.1.0" />
+        <label for="ver-schema">JSON Schema</label>
+        <textarea id="ver-schema">{ "type": "object", "properties": { "name": { "type": "string" }, "note": { "type": "string" } }, "required": ["name"] }</textarea>
+        <button type="button" id="ver-btn">提交版本草稿</button>
+      </div>
+
+      <div class="card">
+        <h3>3 · 冻结版本</h3>
+        <label for="frz-dataset">数据集</label>
+        <select id="frz-dataset"></select>
+        <label for="frz-version">版本号</label>
+        <input id="frz-version" placeholder="1.0.0" />
+        <button type="button" class="secondary" id="frz-btn">冻结并物化</button>
+        <p class="note">冻结会写入 R2（<code>schemas/{slug}/{version}.json</code>）并更新目录索引；同路径二次冻结会被拒绝。</p>
+      </div>
+
+      <div class="card">
+        <h3>目录与数据集</h3>
+        <button type="button" class="secondary" id="refresh-btn">刷新目录</button>
+        <div id="catalog"></div>
+      </div>
+    </section>
+
+    <h2>执行结果</h2>
+    <pre id="out">// 结果将显示在这里</pre>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · P1 基础与编目</footer>
+  </div>
+
+  <script>
+    const out = document.getElementById("out");
+    const show = (label, data) => {
+      out.textContent = `// ${label}\n` + JSON.stringify(data, null, 2);
+    };
+    const api = async (path, init) => {
+      const res = await fetch(path, init);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`${res.status} ${JSON.stringify(body)}`);
+      return body;
+    };
+    const post = (path, body) =>
+      api(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    let datasets = [];
+
+    const fillSelects = () => {
+      for (const id of ["ver-dataset", "frz-dataset"]) {
+        const el = document.getElementById(id);
+        el.innerHTML = datasets
+          .map((d) => `<option value="${d.id}">${d.slug} · ${d.title}</option>`)
+          .join("");
+      }
+    };
+
+    const renderCatalog = (catalog) => {
+      const rows = (catalog.datasets || [])
+        .map(
+          (d) =>
+            `<tr><td>${d.slug}</td><td>${d.title}</td><td><span class="pill frozen">${d.currentSchemaVersion ?? "-"}</span></td></tr>`,
+        )
+        .join("");
+      const datasetRows = datasets
+        .map(
+          (d) =>
+            `<tr><td>${d.slug}</td><td>${d.title}</td><td>${d.schemaVersions
+              .map((v) => `<span class="pill ${v.status === "frozen" ? "frozen" : "draft"}">${v.version} · ${v.status}</span>`)
+              .join(" ")}</td></tr>`,
+        )
+        .join("");
+      document.getElementById("catalog").innerHTML = `
+        <h4>目录索引</h4>
+        <table><thead><tr><th>slug</th><th>标题</th><th>当前 Schema</th></tr></thead><tbody>${rows || "<tr><td colspan=3>（空）</td></tr>"}</tbody></table>
+        <h4>数据集</h4>
+        <table><thead><tr><th>slug</th><th>标题</th><th>版本</th></tr></thead><tbody>${datasetRows || "<tr><td colspan=3>（空）</td></tr>"}</tbody></table>`;
+    };
+
+    const refresh = async () => {
+      const [{ datasets: list }, catalog] = await Promise.all([
+        api("/api/admin/datasets"),
+        api("/api/admin/catalog"),
+      ]);
+      datasets = list;
+      fillSelects();
+      renderCatalog(catalog);
+    };
+
+    document.getElementById("reg-btn").onclick = async () => {
+      try {
+        const body = await post("/api/admin/datasets", {
+          slug: document.getElementById("reg-slug").value.trim(),
+          title: document.getElementById("reg-title").value.trim(),
+          schema: JSON.parse(document.getElementById("reg-schema").value),
+        });
+        show("注册成功", body);
+        await refresh();
+      } catch (e) {
+        show("注册失败", String(e.message ?? e));
+      }
+    };
+
+    document.getElementById("ver-btn").onclick = async () => {
+      try {
+        const id = document.getElementById("ver-dataset").value;
+        const body = await post(`/api/admin/datasets/${id}/schema-versions`, {
+          version: document.getElementById("ver-version").value.trim(),
+          schema: JSON.parse(document.getElementById("ver-schema").value),
+        });
+        show("版本草稿已提交", body);
+        await refresh();
+      } catch (e) {
+        show("提交失败", String(e.message ?? e));
+      }
+    };
+
+    document.getElementById("frz-btn").onclick = async () => {
+      try {
+        const id = document.getElementById("frz-dataset").value;
+        const body = await post(`/api/admin/datasets/${id}/freeze`, {
+          version: document.getElementById("frz-version").value.trim(),
+        });
+        show("冻结成功", body);
+        await refresh();
+      } catch (e) {
+        show("冻结失败", String(e.message ?? e));
+      }
+    };
+
+    document.getElementById("refresh-btn").onclick = () =>
+      refresh().catch((e) => show("刷新失败", String(e.message ?? e)));
+
+    refresh().catch((e) => show("初始化失败", String(e.message ?? e)));
+  </script>
+</body>
+</html>

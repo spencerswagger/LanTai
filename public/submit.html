@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 匿名贡献</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/submit" class="active">匿名贡献</a>
+      <a href="/admin">管理后台</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai · 贡献</p>
+      <h1>匿名提交数据</h1>
+      <p class="lede">
+        选择数据集、粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交。提交后将获得一枚追踪令牌，
+        凭令牌可查询审阅状态。提交仅写入待审记录，不会直接发布。
+      </p>
+    </header>
+
+    <section class="card">
+      <h3>1 · 选择数据集</h3>
+      <label for="slug-select">数据集</label>
+      <select id="slug-select"></select>
+      <div id="slug-manual-wrap" style="display:none">
+        <label for="slug-manual">手动输入 slug</label>
+        <input id="slug-manual" placeholder="demo" />
+      </div>
+
+      <h3>2 · 提交内容（JSON）</h3>
+      <label for="payload">payload</label>
+      <textarea id="payload">{
+  "name": "示例"
+}</textarea>
+      <p class="note" id="json-status">JSON 语法有效</p>
+
+      <h3>3 · 预览</h3>
+      <div id="tree" class="tree">（有效 JSON 将在此显示树状预览）</div>
+
+      <h3>4 · 联系方式（可选）</h3>
+      <label for="email">邮箱</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+
+      <h3>5 · 人机校验</h3>
+      <div id="turnstile-wrap" style="display:none">
+        <div id="turnstile"></div>
+      </div>
+      <p class="note" id="turnstile-off">当前未配置 Turnstile，提交将直接放行（本地 / 开发态）。</p>
+
+      <button type="button" id="submit-btn">提交</button>
+      <pre id="submit-out">// 提交结果将显示在这里</pre>
+    </section>
+
+    <section class="card">
+      <h3>查询提交状态</h3>
+      <label for="token">追踪令牌</label>
+      <input id="token" placeholder="粘贴提交后获得的令牌" />
+      <button type="button" class="secondary" id="query-btn">查询状态</button>
+      <pre id="query-out">// 查询结果将显示在这里</pre>
+    </section>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · P3 匿名贡献与通知</footer>
+  </div>
+
+  <script>
+    window.TURNSTILE_SITE_KEY = window.TURNSTILE_SITE_KEY || "";
+
+    const $ = (id) => document.getElementById(id);
+    const showOut = (el, label, data) => {
+      el.textContent = `// ${label}\n` + (typeof data === "string" ? data : JSON.stringify(data, null, 2));
+    };
+
+    const api = async (path, init) => {
+      const res = await fetch(path, init);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = body?.error ? `${res.status} ${body.error.code}: ${body.error.message}` : `${res.status}`;
+        throw new Error(msg);
+      }
+      return body;
+    };
+
+    const currentSlug = () => {
+      const manual = $("slug-manual-wrap").style.display !== "none";
+      return manual ? $("slug-manual").value.trim() : $("slug-select").value.trim();
+    };
+
+    const loadDatasets = async () => {
+      try {
+        const catalog = await api("/index.json");
+        const datasets = catalog.datasets || [];
+        if (datasets.length === 0) throw new Error("empty");
+        $("slug-select").innerHTML = datasets
+          .map((d) => `<option value="${d.slug}">${d.slug} · ${d.title}</option>`)
+          .join("");
+        $("slug-select").style.display = "";
+        $("slug-manual-wrap").style.display = "none";
+      } catch {
+        $("slug-select").style.display = "none";
+        $("slug-manual-wrap").style.display = "";
+      }
+    };
+
+    const renderNode = (value) => {
+      if (value === null) return document.createTextNode("null");
+      if (Array.isArray(value)) {
+        const details = document.createElement("details");
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = `Array(${value.length})`;
+        details.appendChild(summary);
+        value.forEach((item, i) => {
+          const row = document.createElement("div");
+          row.className = "tree-row";
+          const key = document.createElement("span");
+          key.className = "tree-key";
+          key.textContent = `[${i}]`;
+          row.appendChild(key);
+          row.appendChild(renderNode(item));
+          details.appendChild(row);
+        });
+        return details;
+      }
+      if (typeof value === "object") {
+        const keys = Object.keys(value);
+        const details = document.createElement("details");
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = `Object(${keys.length})`;
+        details.appendChild(summary);
+        for (const k of keys) {
+          const row = document.createElement("div");
+          row.className = "tree-row";
+          const key = document.createElement("span");
+          key.className = "tree-key";
+          key.textContent = k;
+          row.appendChild(key);
+          row.appendChild(renderNode(value[k]));
+          details.appendChild(row);
+        }
+        return details;
+      }
+      const span = document.createElement("span");
+      span.className = "tree-val";
+      span.textContent = typeof value === "string" ? `"${value}"` : String(value);
+      return span;
+    };
+
+    const updatePreview = () => {
+      const raw = $("payload").value;
+      const tree = $("tree");
+      const status = $("json-status");
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        status.textContent = `JSON 解析错误：${e.message}`;
+        status.className = "note pill error";
+        tree.textContent = "（JSON 无效，无法预览）";
+        return null;
+      }
+      status.textContent = "JSON 语法有效";
+      status.className = "note pill frozen";
+      tree.textContent = "";
+      tree.appendChild(renderNode(parsed));
+      return parsed;
+    };
+
+    let turnstileToken = "";
+    const mountTurnstile = () => {
+      const key = window.TURNSTILE_SITE_KEY;
+      if (!key) {
+        $("turnstile-wrap").style.display = "none";
+        $("turnstile-off").style.display = "";
+        return;
+      }
+      $("turnstile-wrap").style.display = "";
+      $("turnstile-off").style.display = "none";
+      if (window.turnstile) {
+        window.turnstile.render("#turnstile", {
+          sitekey: key,
+          callback: (token) => {
+            turnstileToken = token;
+          },
+        });
+      }
+    };
+
+    $("payload").addEventListener("input", updatePreview);
+
+    $("submit-btn").onclick = async () => {
+      const out = $("submit-out");
+      const slug = currentSlug();
+      if (!slug) {
+        showOut(out, "提交失败", "请选择或输入数据集 slug");
+        return;
+      }
+      let payload;
+      try {
+        payload = JSON.parse($("payload").value);
+      } catch (e) {
+        showOut(out, "提交失败", `JSON 解析错误：${e.message}`);
+        return;
+      }
+      try {
+        const body = await api("/api/submissions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            slug,
+            payload,
+            email: $("email").value.trim() || undefined,
+            turnstileToken: turnstileToken || undefined,
+          }),
+        });
+        $("token").value = body.token;
+        showOut(out, "提交成功，请妥善保管追踪令牌", body);
+      } catch (e) {
+        showOut(out, "提交失败", String(e.message ?? e));
+      }
+    };
+
+    $("query-btn").onclick = async () => {
+      const out = $("query-out");
+      const token = $("token").value.trim();
+      if (!token) {
+        showOut(out, "查询失败", "请输入追踪令牌");
+        return;
+      }
+      try {
+        const body = await api(`/api/submissions/${encodeURIComponent(token)}`);
+        showOut(out, "提交状态", body);
+      } catch (e) {
+        showOut(out, "查询失败", String(e.message ?? e));
+      }
+    };
+
+    const initTurnstile = () => {
+      if (window.TURNSTILE_SITE_KEY && !window.turnstile) {
+        setTimeout(initTurnstile, 200);
+        return;
+      }
+      mountTurnstile();
+    };
+
+    loadDatasets();
+    updatePreview();
+    initTurnstile();
+  </script>
+
+  <style>
+    .tree {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.82rem;
+      background: #fbfbfe;
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 10px 14px;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .tree details {
+      margin-left: 12px;
+    }
+    .tree-row {
+      margin-left: 14px;
+    }
+    .tree-key {
+      color: var(--accent);
+      margin-right: 6px;
+    }
+    .tree-val {
+      color: var(--muted);
+    }
+  </style>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 运营视图</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/docs/">公开文档</a>
+      <a href="/api/admin/ops" target="_blank">运营 API (JSON)</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai Ops · 运营</p>
+      <h1>运营视图（只读）</h1>
+      <p class="lede">
+        展示当前环境、配额阈值、保留清理干跑清单与最近审计。清理动作仅作用于非正式产物
+        （未被引用的预览快照与超窗的已驳回提交），绝不触碰已发布快照、latest 指针或冻结 Schema。
+      </p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h3 style="margin-top:0">环境</h3>
+        <p id="env" class="note">加载中…</p>
+        <h3>配额阈值</h3>
+        <p id="quota" class="note">加载中…</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">保留清理（干跑）</h3>
+        <p class="note">未确认时仅预览，不删除任何对象。</p>
+        <button type="button" id="plan-btn">刷新干跑清单</button>
+        <pre id="plan">// 加载中…</pre>
+        <button type="button" class="secondary" id="run-btn">确认执行清理</button>
+        <p class="note">执行后：删除未被引用的预览快照，并把超窗已驳回提交的 payload 置空。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">最近审计（5 条）</h3>
+      <table>
+        <thead><tr><th>时间</th><th>actor</th><th>动作</th><th>目标</th><th>详情</th></tr></thead>
+        <tbody id="audit"><tr><td colspan="5">加载中…</td></tr></tbody>
+      </table>
+    </section>
+
+    <h2>执行结果</h2>
+    <pre id="out">// 结果将显示在这里</pre>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · P5 运营打磨</footer>
+  </div>
+
+  <script>
+    var out = document.getElementById("out");
+    var show = (label, data) => {
+      out.textContent = "// " + label + "\n" + JSON.stringify(data, null, 2);
+    };
+
+    function renderAudit(rows) {
+      var body = document.getElementById("audit");
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="5">暂无审计记录</td></tr>';
+        return;
+      }
+      body.innerHTML = rows
+        .map((r) => (
+            "<tr><td>" + (r.createdAt || "") + "</td><td>" + (r.actor || "—") + "</td><td>" +
+            (r.action || "") + "</td><td>" + (r.target || "—") + "</td><td><code>" +
+            JSON.stringify(r.detail) + "</code></td></tr>"
+          ))
+        .join("");
+    }
+
+    function load() {
+      fetch("/api/admin/ops")
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((data) => {
+          document.getElementById("env").textContent = data.environment || "-";
+          document.getElementById("quota").textContent = data.quotaThreshold || "-";
+          document.getElementById("plan").textContent = JSON.stringify(data.retention, null, 2);
+          renderAudit(data.latestAudit || []);
+        })
+        .catch(() => {
+          document.getElementById("plan").textContent = "// 运营视图暂不可用";
+          document.getElementById("audit").innerHTML =
+            '<tr><td colspan="5">运营视图暂不可用</td></tr>';
+        });
+    }
+
+    document.getElementById("plan-btn").addEventListener("click", () => {
+      load();
+    });
+
+    document.getElementById("run-btn").addEventListener("click", () => {
+      fetch("/api/admin/ops/retention/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      })
+        .then((r) => r.json())
+        .then((body) => {
+          show("保留清理已执行", body);
+          load();
+        })
+        .catch((e) => {
+          show("保留清理失败", String(e));
+        });
+    });
+
+    load();
+  </script>
+</body>
+</html>
