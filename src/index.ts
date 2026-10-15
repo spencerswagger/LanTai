@@ -7,6 +7,7 @@ import { accessGuard } from "./middleware/access";
 import { r2KeyForPublicPath } from "./r2/keys";
 import { adminApi } from "./routes/admin";
 import { healthApi } from "./routes/health";
+import { submissionsApi } from "./routes/submissions";
 
 const app = new Hono<AppEnv>();
 
@@ -20,6 +21,7 @@ app.onError((err, c) => {
 
 app.route("/api", healthApi);
 app.route("/api/admin", adminApi);
+app.route("/api", submissionsApi);
 
 function servePage(path: string) {
   return (c: Context<AppEnv>) =>
@@ -32,6 +34,7 @@ function servePage(path: string) {
 }
 
 app.get("/admin", accessGuard, servePage("/admin.html"));
+app.get("/submit", servePage("/submit.html"));
 
 /**
  * 开发态静态读取直通：仅当 ALLOW_DEV_STATIC=true 时启用，把平台数据路径映射到 R2 对象，

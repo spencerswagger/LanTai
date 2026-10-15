@@ -30,7 +30,9 @@
   "vars": {
     "ENVIRONMENT": "development",
     "ALLOW_DEV_STATIC": "true",
-    "SKIP_ACCESS_DEV": "true"
+    "SKIP_ACCESS_DEV": "true",
+    "TURNSTILE_SITE_KEY": "",
+    "IP_HASH_SALT": "dev-salt"
   },
   "env": {
     "preprod": {
