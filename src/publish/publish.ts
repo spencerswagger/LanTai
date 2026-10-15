@@ -5,6 +5,7 @@ import { BadRequestError, ConflictError } from "../lib/errors";
 import { sha256Hex } from "../lib/hash";
 import { newId, nowIso } from "../lib/ids";
 import { stableStringify } from "../lib/stable-json";
+import { rebuildGlobalSearchIndex } from "../ops/search-index";
 import { upsertCatalogEntry } from "../r2/catalog";
 import { dataSnapshotKey } from "../r2/keys";
 import { buildManifest, type ManifestDataVersion, writeManifest } from "../r2/manifest";
@@ -144,6 +145,8 @@ export async function publishDataset(
     currentDataVersion: version,
     updatedAt: publishedAt,
   });
+
+  await rebuildGlobalSearchIndex(env);
 
   return { version, r2Key, contentHash, pointer };
 }

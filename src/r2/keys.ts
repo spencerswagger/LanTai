@@ -25,10 +25,6 @@ export function datasetSearchIndexKey(slug: string): string {
   return `${slug}/search-index.json`;
 }
 
-export function docKey(path: string): string {
-  return `docs/${path.replace(/^\/+/, "")}`;
-}
-
 export type CacheClass = "immutable" | "pointer" | "index";
 
 const IMMUTABLE_PATTERNS: RegExp[] = [
@@ -58,7 +54,6 @@ const PUBLIC_PATTERNS: RegExp[] = [
   /^index\.json$/,
   /^schemas\/[a-z0-9-]+\/[0-9A-Za-z.-]+\.json$/,
   /^search\/index\.json$/,
-  /^docs\/[A-Za-z0-9._/-]+$/,
   /^[a-z0-9-]+\/manifest\.json$/,
   /^[a-z0-9-]+\/latest\.json$/,
   /^[a-z0-9-]+\/preview\.json$/,

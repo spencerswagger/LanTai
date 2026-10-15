@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 贡献者指南</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/search">搜索</a>
+      <a href="/submit" class="active">提交</a>
+      <a href="/review">审阅</a>
+      <a href="/docs/">公开文档</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai Docs · 贡献者</p>
+      <h1>匿名贡献与审阅流程</h1>
+      <p class="lede">
+        任何人均可匿名提交数据修订，无需账号。提交经人机校验与限流门槛后进入审阅队列，
+        由管理员预发布与合并。
+      </p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h2 style="margin-top:0">提交流程</h2>
+        <ol>
+          <li>在 <a href="/submit">提交页</a> 选择数据集并粘贴符合冻结 Schema 的 JSON。</li>
+          <li>通过 Turnstile 人机校验（生产环境）与限流后入库，状态为 <code>pending</code>。</li>
+          <li>系统返回一次性<strong>追踪令牌</strong>；如填写邮箱，将收到状态通知。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0">状态机</h2>
+        <pre>pending ──▶ staged ──▶ published
+   │           │
+   └───────────┴──────▶ rejected</pre>
+        <p class="note">
+          <code>published</code> 为终态；<code>rejected</code> 保留记录并置空 payload（保留窗口后）。
+          所有迁移均落审计。
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">追踪与通知</h2>
+      <p>凭追踪令牌查询状态：</p>
+      <pre>GET /api/submissions/{token}
+→ { "slug": "demo", "status": "pending", ... }</pre>
+      <p class="note">
+        通知邮件仅包含追踪令牌与查询链接，<strong>绝不回显 payload</strong> 等敏感内容；
+        未配置邮件通道时静默跳过，不影响提交结果。
+      </p>
+      <p>
+        <a href="/submit">开始提交</a> ·
+        <a href="/review">审阅队列</a> ·
+        <a href="/docs/reader.html">读者指南</a>
+      </p>
+    </section>
+
+    <footer>LanTai 兰台 · 贡献者指南</footer>
+  </div>
+</body>
+</html>

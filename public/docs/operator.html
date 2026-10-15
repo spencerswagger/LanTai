@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 运营者指南</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/search">搜索</a>
+      <a href="/submit">提交</a>
+      <a href="/review">审阅</a>
+      <a href="/docs/" class="active">公开文档</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai Docs · 运营者</p>
+      <h1>运营与纪律</h1>
+      <p class="lede">
+        平台以 Cloudflare 免费额度运营：读取零计算，成本集中在写入与审阅。
+        运营者需遵守保留策略与配额纪律，并知悉预发地址的“非正式”属性。
+      </p>
+    </header>
+
+    <section class="card">
+      <h2 style="margin-top:0">保留策略</h2>
+      <p>
+        定时任务每日检查配额；保留清理仅作用于<strong>非正式产物</strong>：
+      </p>
+      <ul>
+        <li>未被当前 preview 指针引用的预览快照（<code>{slug}/versions/preview-*</code>）可删除。</li>
+        <li>超过保留窗口（默认 7 天）的已驳回提交，其 payload 被置空（保留行与审计）。</li>
+        <li><strong>绝不删除</strong>已发布快照、<code>latest.json</code> 或冻结的 <code>schema_version</code>。</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">配额纪律</h2>
+      <ul>
+        <li>每日请求阈值由 <code>QUOTA_ALERT_THRESHOLD</code> 设定（默认 80000）。</li>
+        <li>使用率 ≥ 80% 记 warn，≥ 100% 记 critical，并写审计 <code>ops.quota.alert</code>。</li>
+        <li>配置 <code>ADMIN_FALLBACK_EMAIL</code> 时同步发信；未配置发信时仅写审计。</li>
+        <li>读取路径绕开 Worker 与配额，优先以静态消费降低计算消耗。</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">预发环境（非正式）</h2>
+      <p>
+        预发（<code>preprod</code>）用于验证发布与审阅链路。其地址与发布物为
+        <strong>非正式</strong>产物，不得对外引用、不得作为数据来源；正式读取一律以生产
+        <code>latest.json</code> 指向的不可变快照为准。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">三项决策定论</h2>
+      <table>
+        <thead><tr><th>议题</th><th>定论</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>版本保留</td>
+            <td>已发布快照永久保留、不可覆盖；仅清理未被引用的预览快照与超窗驳回 payload。</td>
+          </tr>
+          <tr>
+            <td>预发暴露</td>
+            <td>预发地址为非正式产物，限内部验证，不做对外承诺与索引。</td>
+          </tr>
+          <tr>
+            <td>邮件送达</td>
+            <td>通知为尽力而为：未接入邮件通道时静默跳过，提交与审阅结果不受影响。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <a href="/">返回目录</a> ·
+        <a href="/submit">匿名提交</a> ·
+        <a href="/review">审阅队列</a>
+      </p>
+    </section>
+
+    <footer>LanTai 兰台 · 运营者指南</footer>
+  </div>
+</body>
+</html>

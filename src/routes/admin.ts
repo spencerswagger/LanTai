@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { accessGuard } from "../middleware/access";
 import { datasetsAdminRoutes } from "./admin-datasets";
+import { opsAdminRoutes } from "./admin-ops";
 import { publishAdminRoutes } from "./admin-publish";
 import { reviewAdminRoutes } from "./admin-review";
 
@@ -16,3 +17,4 @@ adminApi.use("*", accessGuard);
 adminApi.route("/", datasetsAdminRoutes);
 adminApi.route("/", publishAdminRoutes);
 adminApi.route("/", reviewAdminRoutes);
+adminApi.route("/", opsAdminRoutes);

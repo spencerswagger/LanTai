@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 跨数据集搜索</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/search" class="active">搜索</a>
+      <a href="/index.json">index.json</a>
+      <a href="/admin">管理后台</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai · 检索</p>
+      <h1>跨数据集搜索</h1>
+      <p class="lede">
+        在静态搜索索引 <code>/search/index.json</code> 上按 slug、标题与字段名过滤。
+        索引仅收录字段元数据（名称 / 标题 / 类型），不包含任何 payload 值。
+      </p>
+    </header>
+
+    <section class="card">
+      <label for="q">关键词</label>
+      <input id="q" type="search" placeholder="例如：人口、name、常住" autocomplete="off" />
+      <button type="button" id="clear-btn" class="secondary">清空</button>
+      <p class="note" id="count">加载中…</p>
+      <div id="results"></div>
+    </section>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · 读取零计算</footer>
+  </div>
+
+  <script>
+    var docs = [];
+    var results = document.getElementById("results");
+    var count = document.getElementById("count");
+
+    function fieldMatches(field, q) {
+      return (
+        (field.name || "").toLowerCase().includes(q) ||
+        (field.title || "").toLowerCase().includes(q)
+      );
+    }
+
+    function docMatches(doc, q) {
+      if ((doc.slug || "").toLowerCase().includes(q)) return true;
+      if ((doc.title || "").toLowerCase().includes(q)) return true;
+      return (doc.fields || []).some((f) => fieldMatches(f, q));
+    }
+
+    function render() {
+      var q = document.getElementById("q").value.trim().toLowerCase();
+      var matched = q ? docs.filter((d) => docMatches(d, q)) : docs;
+      count.textContent = "命中 " + matched.length + " / " + docs.length + " 个数据集";
+      if (matched.length === 0) {
+        results.innerHTML = '<p class="note">没有匹配的数据集。</p>';
+        return;
+      }
+      var cards = matched
+        .map((d) => {
+          var fields = (d.fields || [])
+            .map((f) => '<span class="pill">' + (f.title || f.name) + " · " + (f.type || "?") + "</span>")
+            .join(" ");
+          return (
+            '<div class="card"><h3 style="margin-top:0">' +
+            '<a href="/' + d.slug + '/manifest.json">' + d.slug + "</a></h3>" +
+            "<p>" + (d.title || "") + "</p>" +
+            '<p class="note">Schema ' + (d.schemaVersion || "-") + " · 数据版本 " + (d.dataVersion || "-") + "</p>" +
+            "<p>" + (fields || '<span class="note">无字段元数据</span>') + "</p></div>"
+          );
+        })
+        .join("");
+      results.innerHTML = cards;
+    }
+
+    function load() {
+      fetch("/search/index.json")
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((index) => {
+          docs = index.datasets || [];
+          render();
+        })
+        .catch(() => {
+          count.textContent = "搜索索引暂不可用";
+          results.innerHTML =
+            '<p class="note">无法加载 <code>/search/index.json</code>，请稍后重试。</p>';
+        });
+    }
+
+    document.getElementById("q").addEventListener("input", render);
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      document.getElementById("q").value = "";
+      render();
+    });
+    load();
+  </script>
+</body>
+</html>

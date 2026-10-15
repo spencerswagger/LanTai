@@ -4,6 +4,7 @@ import type { AppEnv, Env } from "./env";
 import { AppError } from "./lib/errors";
 import { errorBody } from "./lib/response";
 import { accessGuard } from "./middleware/access";
+import { handleScheduled } from "./ops/cron";
 import { r2KeyForPublicPath } from "./r2/keys";
 import { adminApi } from "./routes/admin";
 import { healthApi } from "./routes/health";
@@ -35,6 +36,7 @@ function servePage(path: string) {
 
 app.get("/admin", accessGuard, servePage("/admin.html"));
 app.get("/review", accessGuard, servePage("/review.html"));
+app.get("/ops", accessGuard, servePage("/ops.html"));
 app.get("/submit", servePage("/submit.html"));
 
 /**
@@ -72,4 +74,5 @@ export { app };
 
 export default {
   fetch: app.fetch,
+  scheduled: handleScheduled,
 } satisfies ExportedHandler<Env>;

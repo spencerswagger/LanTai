@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LanTai 兰台 · 公开文档</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a href="/">目录</a>
+      <a href="/search">搜索</a>
+      <a href="/submit">提交</a>
+      <a href="/review">审阅</a>
+      <a href="/docs/" class="active">公开文档</a>
+    </nav>
+
+    <header class="top">
+      <p class="eyebrow">LanTai Docs · 公开文档站</p>
+      <h1>兰台文档</h1>
+      <p class="lede">
+        兰台以不可变 JSON Schema 编目、以数据集级不可变快照发布。读取完全走静态发布物
+        （R2 自定义域），写入与审阅走 Worker。文档站本身由 Worker 静态资产托管，不映射到 R2。
+      </p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h3 style="margin-top:0">读者</h3>
+        <p class="note">如何消费发布数据：端点清单、静态 JSON 读取方式与缓存纪律。</p>
+        <p><a href="/docs/reader.html">阅读 →</a></p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">贡献者</h3>
+        <p class="note">匿名提交流程：状态机、追踪令牌与邮件通知。</p>
+        <p><a href="/docs/contributor.html">阅读 →</a></p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">运营者</h3>
+        <p class="note">保留策略、配额纪律与三项决策定论。</p>
+        <p><a href="/docs/operator.html">阅读 →</a></p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">快速入口</h3>
+        <p class="note">公开读取零计算；写入与审阅受保护。</p>
+        <p>
+          <a href="/">数据目录</a> ·
+          <a href="/search">跨数据集搜索</a> ·
+          <a href="/submit">匿名提交</a> ·
+          <a href="/review">审阅队列</a>
+        </p>
+      </div>
+    </section>
+
+    <footer>LanTai 兰台 · 数据典藏机构 · 公开文档站</footer>
+  </div>
+</body>
+</html>
