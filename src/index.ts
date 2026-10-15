@@ -34,6 +34,7 @@ function servePage(path: string) {
 }
 
 app.get("/admin", accessGuard, servePage("/admin.html"));
+app.get("/review", accessGuard, servePage("/review.html"));
 app.get("/submit", servePage("/submit.html"));
 
 /**
