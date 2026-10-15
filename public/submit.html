@@ -3,281 +3,551 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 匿名贡献</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>提交数据 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/submit" class="active">匿名贡献</a>
-      <a href="/admin">管理后台</a>
-    </nav>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
 
-    <header class="top">
-      <p class="eyebrow">LanTai · 贡献</p>
-      <h1>匿名提交数据</h1>
-      <p class="lede">
-        选择数据集、粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交。提交后将获得一枚追踪令牌，
-        凭令牌可查询审阅状态。提交仅写入待审记录，不会直接发布。
-      </p>
-    </header>
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <header class="pagehead">
+        <p class="eyebrow">贡献</p>
+        <h1>匿名提交数据</h1>
+        <p class="lede">
+          选择数据集，粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交。提交只写入待审记录，
+          管理员审阅发布后才会对外生效；完成后会获得一枚追踪令牌，凭它可随时查询进度。
+        </p>
+      </header>
 
-    <section class="card">
-      <h3>1 · 选择数据集</h3>
-      <label for="slug-select">数据集</label>
-      <select id="slug-select"></select>
-      <div id="slug-manual-wrap" style="display:none">
-        <label for="slug-manual">手动输入 slug</label>
-        <input id="slug-manual" placeholder="demo" />
-      </div>
+      <section class="card">
+        <div class="card__body stack">
+          <div id="steps-mount"></div>
 
-      <h3>2 · 提交内容（JSON）</h3>
-      <label for="payload">payload</label>
-      <textarea id="payload">{
-  "name": "示例"
-}</textarea>
-      <p class="note" id="json-status">JSON 语法有效</p>
+          <div class="field">
+            <label class="label" for="slug-select">选择数据集</label>
+            <select class="select" id="slug-select" aria-describedby="slug-hint">
+              <option value="">载入数据目录…</option>
+            </select>
+            <p class="hint" id="slug-hint">
+              从已发布的数据目录中选择；若目录为空或未列出，可手动输入 slug。
+            </p>
+          </div>
 
-      <h3>3 · 预览</h3>
-      <div id="tree" class="tree">（有效 JSON 将在此显示树状预览）</div>
+          <div class="field" id="slug-manual-wrap" style="display:none">
+            <label class="label" for="slug-manual">手动输入 slug</label>
+            <input class="input mono" id="slug-manual" type="text" autocomplete="off"
+              spellcheck="false" placeholder="例如 demo" />
+            <p class="hint">slug 仅含小写字母、数字与连字符，例如 <code>demo</code>。</p>
+          </div>
 
-      <h3>4 · 联系方式（可选）</h3>
-      <label for="email">邮箱</label>
-      <input id="email" type="email" placeholder="you@example.com" />
+          <div>
+            <p class="label">提交内容（JSON）</p>
+            <div id="editor-mount"></div>
+          </div>
 
-      <h3>5 · 人机校验</h3>
-      <div id="turnstile-wrap" style="display:none">
-        <div id="turnstile"></div>
-      </div>
-      <p class="note" id="turnstile-off">当前未配置 Turnstile，提交将直接放行（本地 / 开发态）。</p>
+          <div id="schema-hints" class="stack" aria-live="polite"></div>
 
-      <button type="button" id="submit-btn">提交</button>
-      <pre id="submit-out">// 提交结果将显示在这里</pre>
-    </section>
+          <div class="field">
+            <label class="label" for="email">邮箱（可选）</label>
+            <input class="input" id="email" type="email" autocomplete="off"
+              placeholder="you@example.com" aria-describedby="email-hint" />
+            <p class="hint" id="email-hint">填写后，状态变更时你会收到通知邮件；不填也可，凭追踪令牌查询。</p>
+          </div>
 
-    <section class="card">
-      <h3>查询提交状态</h3>
-      <label for="token">追踪令牌</label>
-      <input id="token" placeholder="粘贴提交后获得的令牌" />
-      <button type="button" class="secondary" id="query-btn">查询状态</button>
-      <pre id="query-out">// 查询结果将显示在这里</pre>
-    </section>
+          <div class="callout callout--info" id="turnstile-off" style="display:none">
+            未配置人机校验，提交将直接放行（本地 / 开发态）。
+          </div>
 
-    <footer>LanTai 兰台 · 数据典藏机构 · P3 匿名贡献与通知</footer>
-  </div>
+          <div class="field" id="turnstile-wrap" style="display:none">
+            <span class="label">人机校验</span>
+            <div id="turnstile"></div>
+          </div>
 
+          <div class="cluster">
+            <button type="button" class="btn btn--primary" id="submit-btn">提交数据</button>
+            <a class="btn btn--ghost btn--sm" href="/docs/contributor.html">贡献者说明</a>
+          </div>
+
+          <div id="submit-result" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h2>查询提交状态</h2>
+        </div>
+        <div class="card__body stack">
+          <p class="muted">提交成功后会获得一枚追踪令牌。凭令牌可随时查询审阅进度，无需登录。</p>
+          <div class="cluster">
+            <a class="btn" href="/status">前往进度查询</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
   <script>
-    window.TURNSTILE_SITE_KEY = window.TURNSTILE_SITE_KEY || "";
+    (() => {
+      "use strict";
+      LT.mountShell({ active: "submit" });
 
-    const $ = (id) => document.getElementById(id);
-    const showOut = (el, label, data) => {
-      el.textContent = `// ${label}\n` + (typeof data === "string" ? data : JSON.stringify(data, null, 2));
-    };
+      var state = { datasets: [], schema: null, schemaVersion: null, turnstileToken: "" };
+      var loadedSlug = null;
 
-    const api = async (path, init) => {
-      const res = await fetch(path, init);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = body?.error ? `${res.status} ${body.error.code}: ${body.error.message}` : `${res.status}`;
-        throw new Error(msg);
-      }
-      return body;
-    };
+      var els = {
+        select: document.getElementById("slug-select"),
+        manualWrap: document.getElementById("slug-manual-wrap"),
+        manual: document.getElementById("slug-manual"),
+        hints: document.getElementById("schema-hints"),
+        email: document.getElementById("email"),
+        result: document.getElementById("submit-result"),
+        submit: document.getElementById("submit-btn"),
+        turnstileWrap: document.getElementById("turnstile-wrap"),
+        turnstileOff: document.getElementById("turnstile-off"),
+      };
 
-    const currentSlug = () => {
-      const manual = $("slug-manual-wrap").style.display !== "none";
-      return manual ? $("slug-manual").value.trim() : $("slug-select").value.trim();
-    };
-
-    const loadDatasets = async () => {
-      try {
-        const catalog = await api("/index.json");
-        const datasets = catalog.datasets || [];
-        if (datasets.length === 0) throw new Error("empty");
-        $("slug-select").innerHTML = datasets
-          .map((d) => `<option value="${d.slug}">${d.slug} · ${d.title}</option>`)
-          .join("");
-        $("slug-select").style.display = "";
-        $("slug-manual-wrap").style.display = "none";
-      } catch {
-        $("slug-select").style.display = "none";
-        $("slug-manual-wrap").style.display = "";
-      }
-    };
-
-    const renderNode = (value) => {
-      if (value === null) return document.createTextNode("null");
-      if (Array.isArray(value)) {
-        const details = document.createElement("details");
-        details.open = true;
-        const summary = document.createElement("summary");
-        summary.textContent = `Array(${value.length})`;
-        details.appendChild(summary);
-        value.forEach((item, i) => {
-          const row = document.createElement("div");
-          row.className = "tree-row";
-          const key = document.createElement("span");
-          key.className = "tree-key";
-          key.textContent = `[${i}]`;
-          row.appendChild(key);
-          row.appendChild(renderNode(item));
-          details.appendChild(row);
-        });
-        return details;
-      }
-      if (typeof value === "object") {
-        const keys = Object.keys(value);
-        const details = document.createElement("details");
-        details.open = true;
-        const summary = document.createElement("summary");
-        summary.textContent = `Object(${keys.length})`;
-        details.appendChild(summary);
-        for (const k of keys) {
-          const row = document.createElement("div");
-          row.className = "tree-row";
-          const key = document.createElement("span");
-          key.className = "tree-key";
-          key.textContent = k;
-          row.appendChild(key);
-          row.appendChild(renderNode(value[k]));
-          details.appendChild(row);
+      var stepApi = LT.steps(document.getElementById("steps-mount"), [
+        "选择数据集",
+        "填写内容",
+        "人机校验",
+        "提交完成",
+      ]);
+      var curStep = 0;
+      stepApi.go(0);
+      function setStep(i) {
+        if (i > curStep) {
+          curStep = i;
+          stepApi.go(i);
         }
-        return details;
       }
-      const span = document.createElement("span");
-      span.className = "tree-val";
-      span.textContent = typeof value === "string" ? `"${value}"` : String(value);
-      return span;
-    };
 
-    const updatePreview = () => {
-      const raw = $("payload").value;
-      const tree = $("tree");
-      const status = $("json-status");
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (e) {
-        status.textContent = `JSON 解析错误：${e.message}`;
-        status.className = "note pill error";
-        tree.textContent = "（JSON 无效，无法预览）";
-        return null;
-      }
-      status.textContent = "JSON 语法有效";
-      status.className = "note pill frozen";
-      tree.textContent = "";
-      tree.appendChild(renderNode(parsed));
-      return parsed;
-    };
+      var editor = LT.jsonEditor(document.getElementById("editor-mount"), {
+        label: "payload（JSON）",
+        placeholder: '{\n  "字段": "值"\n}',
+        onChange: (p) => {
+          if (p.ok && p.value !== undefined && currentSlug()) setStep(2);
+        },
+      });
 
-    let turnstileToken = "";
-    const mountTurnstile = () => {
-      const key = window.TURNSTILE_SITE_KEY;
-      if (!key) {
-        $("turnstile-wrap").style.display = "none";
-        $("turnstile-off").style.display = "";
-        return;
+      function currentSlug() {
+        if (els.manualWrap.style.display !== "none") return els.manual.value.trim();
+        return els.select.value.trim();
       }
-      $("turnstile-wrap").style.display = "";
-      $("turnstile-off").style.display = "none";
-      if (window.turnstile) {
-        window.turnstile.render("#turnstile", {
-          sitekey: key,
-          callback: (token) => {
-            turnstileToken = token;
-          },
+
+      function showManual(prefill) {
+        els.select.style.display = "none";
+        els.manualWrap.style.display = "";
+        if (typeof prefill === "string") els.manual.value = prefill;
+      }
+
+      function loadDatasets() {
+        LT.get("/index.json")
+          .then((catalog) => {
+            state.datasets = (catalog?.datasets) || [];
+            if (state.datasets.length === 0) {
+              showManual();
+              return;
+            }
+            els.select.innerHTML = "";
+            els.select.appendChild(LT.el("option", { value: "", text: "请选择数据集…" }));
+            state.datasets.forEach((d) => {
+              els.select.appendChild(
+                LT.el("option", { value: d.slug, text: `${d.slug} · ${d.title}` }),
+              );
+            });
+            els.select.style.display = "";
+            els.manualWrap.style.display = "none";
+            var pre = LT.param("slug");
+            if (pre) {
+              if (state.datasets.some((d) => d.slug === pre)) {
+                els.select.value = pre;
+              } else {
+                showManual(pre);
+              }
+              onSlugChange();
+            }
+          })
+          .catch(() => {
+            showManual();
+            LT.toast("无法读取数据目录，请手动输入 slug", { type: "warn" });
+          });
+      }
+
+      function onSlugChange() {
+        var slug = currentSlug();
+        if (!slug) {
+          state.schema = null;
+          state.schemaVersion = null;
+          loadedSlug = null;
+          LT.clear(els.hints);
+          return;
+        }
+        setStep(1);
+        if (slug === loadedSlug) return;
+        loadedSlug = slug;
+        loadSchema(slug);
+      }
+
+      function resolveSchema(slug) {
+        var ds = state.datasets.filter((d) => d.slug === slug)[0];
+        var verPromise =
+          ds?.currentSchemaVersion
+            ? Promise.resolve(ds.currentSchemaVersion)
+            : LT.loadJsonStrict(`/${encodeURIComponent(slug)}/manifest.json`).then(
+                (m) => m?.schema ? m.schema.version : null,
+              );
+        return verPromise.then((ver) => {
+          if (!ver) return null;
+          return LT.loadJsonStrict(
+            `/schemas/${encodeURIComponent(slug)}/${encodeURIComponent(ver)}.json`,
+          ).then((schema) => ({ version: ver, schema: schema }));
         });
       }
-    };
 
-    $("payload").addEventListener("input", updatePreview);
+      function loadSchema(slug) {
+        state.schema = null;
+        state.schemaVersion = null;
+        renderHintsLoading(slug);
+        resolveSchema(slug)
+          .then((res) => {
+            if (res?.schema) {
+              state.schema = res.schema;
+              state.schemaVersion = res.version;
+              renderHints(slug, res.version, res.schema);
+            } else {
+              renderHintsUnavailable(slug);
+            }
+          })
+          .catch(() => {
+            renderHintsUnavailable(slug);
+          });
+      }
 
-    $("submit-btn").onclick = async () => {
-      const out = $("submit-out");
-      const slug = currentSlug();
-      if (!slug) {
-        showOut(out, "提交失败", "请选择或输入数据集 slug");
-        return;
+      function renderHintsLoading(slug) {
+        LT.clear(els.hints);
+        els.hints.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [
+              LT.el("h2", { text: "字段规范" }),
+              LT.el("span", { class: "tag tag--plain mono", text: slug }),
+            ]),
+            LT.el("div", { class: "card__body" }, LT.skeleton(3)),
+          ]),
+        );
       }
-      let payload;
-      try {
-        payload = JSON.parse($("payload").value);
-      } catch (e) {
-        showOut(out, "提交失败", `JSON 解析错误：${e.message}`);
-        return;
+
+      function renderHintsUnavailable(slug) {
+        LT.clear(els.hints);
+        els.hints.appendChild(
+          LT.el("div", { class: "callout callout--warn" }, [
+            LT.el("div", { class: "stack" }, [
+              LT.el("div", {}, [
+                document.createTextNode("无法读取数据集 "),
+                LT.el("code", { text: slug }),
+                document.createTextNode(" 的冻结 Schema。请确认 slug 正确，且该数据集已冻结 Schema。"),
+              ]),
+              LT.el("div", {}, [
+                LT.el("button", {
+                  class: "btn btn--sm",
+                  type: "button",
+                  text: "重试",
+                  onclick: () => {
+                    loadedSlug = null;
+                    loadSchema(slug);
+                  },
+                }),
+              ]),
+            ]),
+          ]),
+        );
       }
-      try {
-        const body = await api("/api/submissions", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            slug,
-            payload,
-            email: $("email").value.trim() || undefined,
-            turnstileToken: turnstileToken || undefined,
+
+      function renderHints(slug, ver, schema) {
+        LT.clear(els.hints);
+        var props =
+          schema?.properties && typeof schema.properties === "object"
+            ? schema.properties
+            : null;
+        var required = Array.isArray(schema?.required) ? schema.required : [];
+
+        var body = LT.el("div", { class: "card__body" });
+        if (schema?.description) {
+          body.appendChild(LT.el("p", { class: "muted", text: String(schema.description) }));
+        }
+        if (!props || Object.keys(props).length === 0) {
+          body.appendChild(
+            LT.el("p", { class: "muted", text: "该 Schema 未声明 properties，请按数据集文档提交。" }),
+          );
+        } else {
+          const thead = LT.el("thead", {}, [
+            LT.el("tr", {}, [
+              LT.el("th", { text: "字段" }),
+              LT.el("th", { text: "类型" }),
+              LT.el("th", { text: "标题" }),
+              LT.el("th", { text: "必填" }),
+            ]),
+          ]);
+          const tbody = LT.el("tbody");
+          Object.keys(props).forEach((key) => {
+            var p = props[key] || {};
+            tbody.appendChild(
+              LT.el("tr", {}, [
+                LT.el("td", {}, LT.el("code", { text: key })),
+                LT.el("td", {}, LT.el("span", { class: "tag tag--plain", text: p.type || "—" })),
+                LT.el("td", { text: p.title || p.description || "—" }),
+                LT.el("td", {}, [
+                  required.indexOf(key) >= 0
+                    ? LT.el("span", { class: "tag tag--draft", text: "必填" })
+                    : LT.el("span", { class: "faint", text: "可选" }),
+                ]),
+              ]),
+            );
+          });
+          body.appendChild(
+            LT.el("div", { class: "table-wrap" }, LT.el("table", { class: "table" }, [thead, tbody])),
+          );
+        }
+
+        els.hints.appendChild(
+          LT.el("section", { class: "card card--flush" }, [
+            LT.el("div", { class: "card__head" }, [
+              LT.el("h2", { text: "字段规范" }),
+              LT.el("span", { class: "tag tag--plain mono", text: `${slug}@${ver}` }),
+            ]),
+            body,
+            LT.el("div", { class: "card__foot cluster" }, [
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "插入示例",
+                onclick: insertExample,
+              }),
+              LT.el("span", { class: "hint", text: "按 Schema 生成一份骨架 JSON，填入编辑器。" }),
+            ]),
+          ]),
+        );
+      }
+
+      function sampleValue(schema) {
+        if (!schema || typeof schema !== "object") return null;
+        if (Array.isArray(schema.examples) && schema.examples.length > 0) return schema.examples[0];
+        if (schema.default !== undefined) return schema.default;
+        var type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+        if (type === "object" || (!type && schema.properties)) {
+          const obj = {};
+          const props = schema.properties || {};
+          Object.keys(props).forEach((k) => {
+            obj[k] = sampleValue(props[k]);
+          });
+          return obj;
+        }
+        if (type === "array") return [];
+        if (type === "integer" || type === "number") return 0;
+        if (type === "boolean") return false;
+        if (type === "null") return null;
+        return "";
+      }
+
+      function insertExample() {
+        if (!state.schema) {
+          LT.toast("请先选择数据集并读取 Schema", { type: "warn" });
+          return;
+        }
+        editor.setValue(sampleValue(state.schema));
+        LT.toast("已插入示例", { type: "ok" });
+        editor.focus();
+      }
+
+      /* ---- Turnstile：仅当存在 site key 时按需加载脚本并渲染 ---- */
+      function loadTurnstileScript() {
+        return new Promise((resolve) => {
+          if (window.turnstile) {
+            resolve();
+            return;
+          }
+          var s = document.createElement("script");
+          s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+          s.async = true;
+          s.defer = true;
+          s.onload = () => { resolve(); };
+          s.onerror = () => { resolve(); };
+          document.head.appendChild(s);
+        });
+      }
+
+      function setupTurnstile() {
+        var key = window.TURNSTILE_SITE_KEY || "";
+        if (!key) {
+          els.turnstileOff.style.display = "";
+          els.turnstileWrap.style.display = "none";
+          return;
+        }
+        els.turnstileOff.style.display = "none";
+        els.turnstileWrap.style.display = "";
+        loadTurnstileScript().then(() => {
+          if (!window.turnstile) return;
+          window.turnstile.render("#turnstile", {
+            sitekey: key,
+            callback: (token) => {
+              state.turnstileToken = token;
+            },
+          });
+        });
+      }
+
+      function renderErrorBox(title, message, list) {
+        LT.clear(els.result);
+        var children = [LT.el("p", { text: message })];
+        if (list && list.length > 0) {
+          const ul = LT.el("ul", { class: "stack" });
+          list.slice(0, 12).forEach((e) => {
+            ul.appendChild(LT.el("li", { class: "mono", text: String(e) }));
+          });
+          children.push(ul);
+          if (list.length > 12) {
+            children.push(LT.el("p", { class: "hint", text: "仅显示前 12 条错误。" }));
+          }
+        }
+        els.result.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [LT.el("h3", { text: title })]),
+            LT.el("div", { class: "card__body stack" }, children),
+          ]),
+        );
+      }
+
+      function copyText(text) {
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard
+            .writeText(text)
+            .then(() => { LT.toast("令牌已复制", { type: "ok" }); })
+            .catch(() => { LT.toast("复制失败，请手动选择复制", { type: "warn" }); });
+        } else {
+          LT.toast("当前环境不支持一键复制，请手动选择复制", { type: "warn" });
+        }
+      }
+
+      function resetForm() {
+        editor.setValue("");
+        els.email.value = "";
+        LT.clear(els.result);
+        state.turnstileToken = "";
+        if (window.turnstile) {
+          try { window.turnstile.reset(); } catch (e) {}
+        }
+        if (els.select.style.display !== "none") els.select.value = "";
+        curStep = 0;
+        stepApi.go(0);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function renderSuccess(res) {
+        LT.clear(els.result);
+        var token = (res?.token) || "";
+        var status = (res?.status) || "pending";
+        var tokenRow = LT.el("div", { class: "cluster" }, [
+          LT.el("code", { class: "mono", style: "word-break:break-all", text: token }),
+          LT.el("button", {
+            class: "btn btn--sm",
+            type: "button",
+            text: "复制令牌",
+            onclick: () => { copyText(token); },
           }),
-        });
-        $("token").value = body.token;
-        showOut(out, "提交成功，请妥善保管追踪令牌", body);
-      } catch (e) {
-        showOut(out, "提交失败", String(e.message ?? e));
+        ]);
+        var actions = LT.el("div", { class: "cluster" }, [
+          LT.el("a", {
+            class: "btn btn--primary",
+            href: `/status?token=${encodeURIComponent(token)}`,
+            text: "查看进度",
+          }),
+          LT.el("button", {
+            class: "btn",
+            type: "button",
+            text: "再提交一条",
+            onclick: resetForm,
+          }),
+        ]);
+        els.result.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [
+              LT.el("h3", { text: "提交完成" }),
+              LT.el("span", { html: LT.statusTag(status) }),
+            ]),
+            LT.el("div", { class: "card__body stack" }, [
+              LT.el("p", {
+                class: "muted",
+                text: "提交已写入待审记录，管理员审阅发布后才会对外生效。请妥善保管以下追踪令牌，凭它查询进度。",
+              }),
+              tokenRow,
+              actions,
+            ]),
+          ]),
+        );
       }
-    };
 
-    $("query-btn").onclick = async () => {
-      const out = $("query-out");
-      const token = $("token").value.trim();
-      if (!token) {
-        showOut(out, "查询失败", "请输入追踪令牌");
-        return;
-      }
-      try {
-        const body = await api(`/api/submissions/${encodeURIComponent(token)}`);
-        showOut(out, "提交状态", body);
-      } catch (e) {
-        showOut(out, "查询失败", String(e.message ?? e));
-      }
-    };
+      function onSubmit() {
+        var slug = currentSlug();
+        if (!slug) {
+          LT.toast("请先选择或输入数据集 slug", { type: "warn" });
+          return;
+        }
+        var p = editor.parsed();
+        if (!p.ok) {
+          renderErrorBox("提交失败", `JSON 语法错误：${p.error.message}`);
+          LT.toast("JSON 语法错误", { type: "error" });
+          return;
+        }
+        if (p.value === undefined) {
+          LT.toast("请填写提交内容", { type: "warn" });
+          return;
+        }
+        var siteKey = window.TURNSTILE_SITE_KEY || "";
+        if (siteKey && !state.turnstileToken) {
+          LT.toast("请先完成人机校验", { type: "warn" });
+          return;
+        }
 
-    const initTurnstile = () => {
-      if (window.TURNSTILE_SITE_KEY && !window.turnstile) {
-        setTimeout(initTurnstile, 200);
-        return;
-      }
-      mountTurnstile();
-    };
+        var body = { slug: slug, payload: p.value };
+        var email = els.email.value.trim();
+        if (email) body.email = email;
+        if (state.turnstileToken) body.turnstileToken = state.turnstileToken;
 
-    loadDatasets();
-    updatePreview();
-    initTurnstile();
+        LT.busy(els.submit, true);
+        setStep(3);
+        LT.post("/api/submissions", body)
+          .then((res) => {
+            LT.busy(els.submit, false);
+            setStep(4);
+            renderSuccess(res);
+            LT.toast("提交成功", { type: "ok" });
+            state.turnstileToken = "";
+            if (window.turnstile) {
+              try { window.turnstile.reset(); } catch (e) {}
+            }
+          })
+          .catch((err) => {
+            LT.busy(els.submit, false);
+            var details = err?.body?.error?.details;
+            var list = details && Array.isArray(details.errors) ? details.errors : null;
+            renderErrorBox("提交失败", (err?.message) || "提交失败", list);
+            LT.toast((err?.message) || "提交失败", { type: "error" });
+          });
+      }
+
+      els.select.addEventListener("change", onSlugChange);
+      els.manual.addEventListener("input", LT.debounce(onSlugChange, 450));
+      els.manual.addEventListener("change", onSlugChange);
+      els.submit.addEventListener("click", onSubmit);
+
+      setupTurnstile();
+      loadDatasets();
+    })();
   </script>
-
-  <style>
-    .tree {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-size: 0.82rem;
-      background: #fbfbfe;
-      border: 1px solid var(--rule);
-      border-radius: 8px;
-      padding: 10px 14px;
-      max-height: 360px;
-      overflow: auto;
-    }
-    .tree details {
-      margin-left: 12px;
-    }
-    .tree-row {
-      margin-left: 14px;
-    }
-    .tree-key {
-      color: var(--accent);
-      margin-right: 6px;
-    }
-    .tree-val {
-      color: var(--muted);
-    }
-  </style>
 </body>
 </html>

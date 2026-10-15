@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>数据集详情 · 兰台 LanTai</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+
+  <main id="main" tabindex="-1">
+    <div class="container">
+      <div id="view" role="status" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <footer class="sitefoot" data-lt-footer></footer>
+
+  <script src="/app.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      LT.mountShell({ active: "catalog" });
+
+      var view = LT.$("#view");
+      var slug = LT.param("slug");
+
+      function th(label) {
+        return LT.el("th", { scope: "col", text: label });
+      }
+
+      function pageHead(eyebrow, title, sub) {
+        var head = LT.el("div", { class: "pagehead" }, [
+          LT.el("p", { class: "eyebrow", text: eyebrow }),
+          LT.el("h1", { text: title }),
+        ]);
+        if (sub) head.appendChild(sub);
+        return head;
+      }
+
+      function renderSkeleton() {
+        LT.clear(view);
+        view.appendChild(LT.el("div", { class: "card", style: "margin-top:var(--s7)" }, [LT.skeleton(6)]));
+      }
+
+      function renderNoSlug() {
+        LT.clear(view);
+        view.appendChild(pageHead("数据集", "数据集详情"));
+        view.appendChild(
+          LT.el("div", { style: "padding-top:var(--s5)" }, [
+            LT.emptyState(
+              "未指定数据集",
+              "链接里缺少 slug 参数，请从数据目录选择一个数据集查看详情。",
+              LT.el("a", { class: "btn btn--sm", href: "/", text: "返回数据目录" }),
+            ),
+          ]),
+        );
+      }
+
+      function renderMissing() {
+        LT.clear(view);
+        view.appendChild(pageHead("数据集", "未找到数据集"));
+        view.appendChild(
+          LT.el("div", { style: "padding-top:var(--s5)" }, [
+            LT.emptyState(
+              "该数据集不存在或尚未发布",
+              `没有找到「${slug}」的清单文件，可能 slug 有误，或管理员尚未发布该数据集。`,
+              LT.el("a", { class: "btn btn--sm", href: "/", text: "返回数据目录" }),
+            ),
+          ]),
+        );
+      }
+
+      function renderError() {
+        LT.clear(view);
+        view.appendChild(pageHead("数据集", "数据集详情"));
+        view.appendChild(
+          LT.el("div", { style: "padding-top:var(--s5)" }, [
+            LT.emptyState(
+              "加载失败",
+              "暂时无法读取该数据集的清单文件，请稍后重试。",
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "重试",
+                onclick: load,
+              }),
+            ),
+          ]),
+        );
+      }
+
+      function fieldsCard(schemaDoc) {
+        var card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(
+          LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "字段说明" })]),
+        );
+        var props =
+          schemaDoc?.properties && typeof schemaDoc.properties === "object"
+            ? schemaDoc.properties
+            : null;
+        var names = props ? Object.keys(props) : [];
+        if (names.length === 0) {
+          card.appendChild(
+            LT.el("div", { class: "card__body" }, [
+              LT.el("p", { class: "muted", text: "该 Schema 未声明 properties，按约定接受任意字段。" }),
+            ]),
+          );
+          return card;
+        }
+        var required = Array.isArray(schemaDoc.required) ? schemaDoc.required : [];
+        var tbody = LT.el("tbody");
+        names.forEach((name) => {
+          var p = props[name] && typeof props[name] === "object" ? props[name] : {};
+          tbody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", { class: "mono", text: name }),
+              LT.el("td", {}, [LT.el("span", { class: "tag tag--plain", text: p.type || "—" })]),
+              LT.el("td", { text: p.title || "—" }),
+              LT.el("td", {}, [
+                required.indexOf(name) !== -1
+                  ? LT.el("span", { class: "tag tag--published tag--plain", text: "必填" })
+                  : LT.el("span", { class: "faint", text: "可选" }),
+              ]),
+            ]),
+          );
+        });
+        var table = LT.el("table", { class: "table" }, [
+          LT.el("thead", {}, [LT.el("tr", {}, [th("字段"), th("类型"), th("标题"), th("必填")])]),
+          tbody,
+        ]);
+        card.appendChild(LT.el("div", { class: "table-wrap" }, [table]));
+        return card;
+      }
+
+      function versionsCard(manifest) {
+        var card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(
+          LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "数据版本" })]),
+        );
+        var versions = (manifest.dataVersions || []).slice().reverse();
+        if (versions.length === 0) {
+          card.appendChild(
+            LT.el("div", { class: "card__body" }, [
+              LT.el("p", { class: "muted", text: "该数据集尚未发布任何数据版本。" }),
+              LT.el("a", { class: "btn btn--sm", href: `/submit?slug=${encodeURIComponent(manifest.slug)}`, text: "提交此数据集的数据" }),
+            ]),
+          );
+          return card;
+        }
+        var tbody = LT.el("tbody");
+        versions.forEach((v) => {
+          var status;
+          if (v.isLatest) status = LT.el("span", { class: "tag tag--published", text: "最新" });
+          else if (v.isPreview) status = LT.el("span", { class: "tag tag--staged", text: "预发布" });
+          else status = LT.el("span", { class: "tag tag--plain", text: "历史版本" });
+          tbody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", { class: "mono num", text: v.version }),
+              LT.el("td", {}, [status]),
+              LT.el("td", { text: LT.fmtDateTime(v.publishedAt) }),
+              LT.el("td", {}, [
+                LT.el("a", {
+                  class: "mono",
+                  href: `/${manifest.slug}/versions/${v.version}.json`,
+                  text: "原始 JSON",
+                }),
+              ]),
+            ]),
+          );
+        });
+        var table = LT.el("table", { class: "table" }, [
+          LT.el("thead", {}, [LT.el("tr", {}, [th("版本"), th("状态"), th("发布时间"), th("产物")])]),
+          tbody,
+        ]);
+        card.appendChild(LT.el("div", { class: "table-wrap" }, [table]));
+        return card;
+      }
+
+      function copyText(text, label) {
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text);
+        }
+        LT.toast(label || "已复制到剪贴板", { type: "ok" });
+      }
+
+      function usageCard(manifest) {
+        var s = manifest.slug;
+        var origin = location.origin;
+        var manifestUrl = `/${s}/manifest.json`;
+        var latestUrl = `/${s}/latest.json`;
+        var curl = `curl -s ${origin}${latestUrl}`;
+
+        var card = LT.el("div", { class: "card" });
+        card.appendChild(LT.el("h2", { text: "如何取用", style: "margin-top:0" }));
+        card.appendChild(
+          LT.el("p", {
+            class: "muted",
+            text: "以下是该数据集的公开读取地址，由 CDN 直读、零计算，可直接在程序或命令行取用。",
+          }),
+        );
+        card.appendChild(
+          LT.el("dl", { class: "kv" }, [
+            LT.el("dt", { text: "清单文件" }),
+            LT.el("dd", {}, [LT.el("a", { class: "mono", href: manifestUrl, text: manifestUrl })]),
+            LT.el("dt", { text: "最新数据" }),
+            LT.el("dd", {}, [LT.el("a", { class: "mono", href: latestUrl, text: latestUrl })]),
+          ]),
+        );
+        card.appendChild(LT.el("pre", { class: "result", text: curl }));
+        card.appendChild(
+          LT.el("div", { class: "cluster", style: "margin-top:var(--s4)" }, [
+            LT.el("button", {
+              class: "btn btn--sm",
+              type: "button",
+              text: "复制 curl",
+              onclick: () => {
+                copyText(curl, "已复制 curl 命令");
+              },
+            }),
+            LT.el("button", {
+              class: "btn btn--sm btn--ghost",
+              type: "button",
+              text: "复制接口地址",
+              onclick: () => {
+                copyText(origin + latestUrl, "已复制接口地址");
+              },
+            }),
+          ]),
+        );
+        card.appendChild(
+          LT.el("div", { class: "cluster", style: "margin-top:var(--s5)" }, [
+            LT.el("a", {
+              class: "btn btn--primary",
+              href: `/submit?slug=${encodeURIComponent(s)}`,
+              text: "提交此数据集的数据",
+            }),
+            LT.el("a", { class: "btn btn--ghost", href: "/docs/", text: "开放接口文档" }),
+          ]),
+        );
+        return card;
+      }
+
+      function renderDataset(manifest, schemaDoc, latest) {
+        LT.clear(view);
+
+        var schemaVersion = (manifest.schema?.version) || null;
+        var latestVersion = manifest.latest || (latest?.dataVersion) || null;
+        var updatedAt = manifest.updatedAt || (latest?.publishedAt) || null;
+        var contentHash = (latest?.contentHash) || null;
+
+        view.appendChild(
+          pageHead("数据集", manifest.title || manifest.slug, LT.el("p", { class: "lede mono", text: manifest.slug })),
+        );
+
+        var body = LT.el("div", { class: "stack-lg", style: "padding-top:var(--s6)" });
+        view.appendChild(body);
+
+        body.appendChild(
+          LT.el("dl", { class: "kv" }, [
+            LT.el("dt", { text: "Schema 版本" }),
+            LT.el("dd", {}, [
+              LT.el("span", {
+                class: "tag tag--frozen tag--plain mono",
+                text: schemaVersion || "—",
+              }),
+            ]),
+            LT.el("dt", { text: "最新数据版本" }),
+            LT.el("dd", { class: "mono", text: latestVersion || "尚无已发布数据" }),
+            LT.el("dt", { text: "更新时间" }),
+            LT.el("dd", { text: LT.fmtDateTime(updatedAt) }),
+            LT.el("dt", { text: "内容哈希" }),
+            LT.el("dd", {
+              class: "mono truncate",
+              text: contentHash || "—",
+              title: contentHash || "",
+            }),
+          ]),
+        );
+
+        body.appendChild(fieldsCard(schemaDoc));
+        body.appendChild(versionsCard(manifest));
+        body.appendChild(usageCard(manifest));
+      }
+
+      function load() {
+        if (!slug) {
+          renderNoSlug();
+          return;
+        }
+        renderSkeleton();
+        LT.loadJsonStrict(`/${slug}/manifest.json`)
+          .then((manifest) => {
+            var schemaUrl =
+              (manifest.schema?.url) ||
+              `/schemas/${slug}/${(manifest.schema?.version) || ""}.json`;
+            return Promise.all([
+              LT.loadJsonStrict(schemaUrl).catch(() => null),
+              LT.loadJsonStrict(`/${slug}/latest.json`).catch(() => null),
+            ]).then((res) => [manifest, res[0], res[1]]);
+          })
+          .then((t) => {
+            renderDataset(t[0], t[1], t[2]);
+          })
+          .catch((err) => {
+            if (err && err.status === 404) renderMissing();
+            else renderError();
+          });
+      }
+
+      load();
+    })();
+  </script>
+</body>
+</html>

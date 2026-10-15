@@ -3,49 +3,57 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 读者指南</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>读者指南 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/search">搜索</a>
-      <a href="/submit">提交</a>
-      <a href="/review">审阅</a>
-      <a href="/docs/" class="active">公开文档</a>
-    </nav>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <header class="pagehead">
+        <p class="eyebrow">LanTai 文档 · 读者</p>
+        <h1>读取与消费</h1>
+        <p class="lede">
+          所有发布物均为静态 JSON，读取不经 Worker 计算；直接以 HTTP GET 拉取即可，
+          无需鉴权、不消耗请求配额，可放心配合缓存与镜像使用。
+        </p>
+        <nav class="cluster" aria-label="文档导航">
+          <a href="/docs/">总览</a>
+          <a href="/docs/reader.html" aria-current="page">读者</a>
+          <a href="/docs/contributor.html">贡献者</a>
+          <a href="/docs/operator.html">运营者</a>
+        </nav>
+      </header>
 
-    <header class="top">
-      <p class="eyebrow">LanTai Docs · 读者</p>
-      <h1>读取与消费</h1>
-      <p class="lede">
-        所有发布物均为静态 JSON，读取不经 Worker 计算；直接以 HTTP GET 拉取即可，
-        无需鉴权、无请求配额消耗。
-      </p>
-    </header>
+      <section class="card card--flush">
+        <div class="card__head"><h2>端点清单</h2></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>端点</th><th>说明</th><th>缓存层</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/index.json</code></td><td>平台目录索引（数据集清单与当前版本）</td><td>index</td></tr>
+              <tr><td><code>/search/index.json</code></td><td>跨数据集静态搜索索引（仅字段元数据）</td><td>index</td></tr>
+              <tr><td><code>/{slug}/manifest.json</code></td><td>数据集清单：Schema 版本、数据版本、latest / preview</td><td>index</td></tr>
+              <tr><td><code>/{slug}/latest.json</code></td><td>最新正式版指针</td><td>pointer</td></tr>
+              <tr><td><code>/{slug}/preview.json</code></td><td>预览指针（<strong>非正式</strong>）</td><td>pointer</td></tr>
+              <tr><td><code>/{slug}/versions/{v}.json</code></td><td>不可变数据快照</td><td>immutable</td></tr>
+              <tr><td><code>/{slug}/search-index.json</code></td><td>单数据集搜索文档</td><td>index</td></tr>
+              <tr><td><code>/schemas/{slug}/{v}.json</code></td><td>冻结的 JSON Schema</td><td>immutable</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2 style="margin-top:0">端点清单</h2>
-      <table>
-        <thead><tr><th>端点</th><th>说明</th><th>缓存层</th></tr></thead>
-        <tbody>
-          <tr><td><code>/index.json</code></td><td>平台目录索引（数据集清单与当前版本）</td><td>index</td></tr>
-          <tr><td><code>/search/index.json</code></td><td>跨数据集静态搜索索引（仅字段元数据）</td><td>index</td></tr>
-          <tr><td><code>/{slug}/manifest.json</code></td><td>数据集清单：Schema 版本、数据版本、latest/preview</td><td>index</td></tr>
-          <tr><td><code>/{slug}/latest.json</code></td><td>最新正式版指针</td><td>pointer</td></tr>
-          <tr><td><code>/{slug}/preview.json</code></td><td>预览指针（<strong>非正式</strong>）</td><td>pointer</td></tr>
-          <tr><td><code>/{slug}/versions/{v}.json</code></td><td>不可变数据快照</td><td>immutable</td></tr>
-          <tr><td><code>/{slug}/search-index.json</code></td><td>单数据集搜索文档</td><td>index</td></tr>
-          <tr><td><code>/schemas/{slug}/{v}.json</code></td><td>冻结的 JSON Schema</td><td>immutable</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="card">
-      <h2 style="margin-top:0">静态 JSON 消费方式</h2>
-      <p>典型读取流程：先读目录索引导航，再按 slug 读 manifest，最后读指针指向的不可变快照。</p>
-      <pre>// 1) 目录
+      <section class="card card--flush">
+        <div class="card__head"><h2>静态 JSON 消费方式</h2></div>
+        <div class="card__body">
+          <p>典型读取流程：先读目录索引导航，再按 slug 读清单，最后读指针指向的不可变快照。</p>
+          <pre class="result">// 1) 目录
 fetch("/index.json").then((r) =&gt; r.json());
 
 // 2) 数据集清单
@@ -53,23 +61,39 @@ fetch("/demo/manifest.json").then((r) =&gt; r.json());
 
 // 3) 最新正式快照（版本号来自 manifest.latest）
 fetch("/demo/versions/3.json").then((r) =&gt; r.json());</pre>
-      <p class="note">
-        快照路径一经发布即不可覆盖，可安全配合长缓存与 ETag 做本地镜像；
-        指针文件短缓存并强制回源校验，用于发现新版本。
-      </p>
-    </section>
+          <p class="muted">
+            快照路径一经发布即不可覆盖，可安全配合长缓存与 ETag 做本地镜像；
+            指针文件短缓存并强制回源校验，用于发现新版本。
+          </p>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2 style="margin-top:0">缓存分层</h2>
-      <ul>
-        <li><strong>immutable</strong>：版本快照与冻结 Schema，<code>max-age=31536000, immutable</code>。</li>
-        <li><strong>pointer</strong>：latest / preview 指针，<code>max-age=60, must-revalidate</code>。</li>
-        <li><strong>index</strong>：目录与搜索索引，<code>max-age=300</code>。</li>
-      </ul>
-      <p><a href="/">返回目录</a> · <a href="/search">跨数据集搜索</a></p>
-    </section>
+      <section class="card card--flush">
+        <div class="card__head"><h2>缓存分层</h2></div>
+        <div class="card__body">
+          <ul>
+            <li><strong>immutable</strong>：版本快照与冻结 Schema，<code>max-age=31536000, immutable</code>。</li>
+            <li><strong>pointer</strong>：latest / preview 指针，<code>max-age=60, must-revalidate</code>。</li>
+            <li><strong>index</strong>：目录与搜索索引，<code>max-age=300</code>。</li>
+          </ul>
+          <p class="muted">
+            已发布数据以 <code>latest.json</code> 指向的不可变快照为准；预览（<code>preview.json</code>）为
+            <strong>非正式</strong>产物，请勿作为数据来源。
+          </p>
+        </div>
+      </section>
 
-    <footer>LanTai 兰台 · 读者指南</footer>
-  </div>
+      <nav class="cluster" aria-label="相关链接">
+        <a href="/">数据目录</a>
+        <a href="/search">跨数据集搜索</a>
+        <a href="/docs/">开放接口总览</a>
+        <a href="/docs/contributor.html">贡献者指南</a>
+        <a href="/docs/operator.html">运营者指南</a>
+      </nav>
+    </div>
+  </main>
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
+  <script>LT.mountShell({ active: "docs" });</script>
 </body>
 </html>

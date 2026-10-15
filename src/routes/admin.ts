@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
-import { accessGuard } from "../middleware/access";
+import { accessGuard, currentActor } from "../middleware/access";
 import { datasetsAdminRoutes } from "./admin-datasets";
 import { opsAdminRoutes } from "./admin-ops";
 import { publishAdminRoutes } from "./admin-publish";
@@ -13,6 +13,9 @@ import { reviewAdminRoutes } from "./admin-review";
 export const adminApi = new Hono<AppEnv>();
 
 adminApi.use("*", accessGuard);
+
+/** 当前后台身份（用于前端展示登录态）。 */
+adminApi.get("/session", (c) => c.json({ actor: currentActor(c) }));
 
 adminApi.route("/", datasetsAdminRoutes);
 adminApi.route("/", publishAdminRoutes);

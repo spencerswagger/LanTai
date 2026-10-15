@@ -1,1 +1,0 @@
-This folder contains the built output assets for the worker "lantai-test" generated at 2026-10-15T16:59:41.830Z.

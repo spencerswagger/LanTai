@@ -3,181 +3,876 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 管理后台</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>数据集与 Schema · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/" class="active">兰台 · 管理</a>
-      <a href="/api/admin/catalog" target="_blank">目录索引 (JSON)</a>
-    </nav>
-
-    <header class="top">
-      <p class="eyebrow">LanTai Admin · 编目</p>
-      <h1>Schema 注册与冻结</h1>
-      <p class="lede">注册数据集并提交首个 Schema 草稿，冻结后写入 R2 静态发布物；冻结后的版本不可覆盖。</p>
-    </header>
-
-    <section class="grid">
-      <div class="card">
-        <h3>1 · 注册数据集</h3>
-        <label for="reg-slug">slug</label>
-        <input id="reg-slug" placeholder="demo" />
-        <label for="reg-title">标题</label>
-        <input id="reg-title" placeholder="示例数据集" />
-        <label for="reg-schema">JSON Schema（首个版本 1.0.0）</label>
-        <textarea id="reg-schema">{
-  "type": "object",
-  "properties": {
-    "name": { "type": "string", "title": "名称" },
-    "value": { "type": "number", "title": "数值" }
-  },
-  "required": ["name"]
-}</textarea>
-        <button type="button" id="reg-btn">注册数据集</button>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+  <main id="main" tabindex="-1">
+    <div class="container">
+      <header class="pagehead">
+        <p class="eyebrow">LanTai 控制台 · 编目</p>
+        <h1>数据集与 Schema</h1>
+        <p class="lede">编目数据集、追加并冻结不可变的 Schema 版本，随后发布数据快照。冻结后的版本不可覆盖。</p>
+      </header>
+      <div class="console">
+        <nav class="sidenav" data-lt-sidenav aria-label="控制台导航"></nav>
+        <div class="console__main">
+          <div id="view" class="stack-lg" role="status" aria-live="polite"></div>
+        </div>
       </div>
-
-      <div class="card">
-        <h3>2 · 追加 Schema 版本</h3>
-        <label for="ver-dataset">数据集</label>
-        <select id="ver-dataset"></select>
-        <label for="ver-version">版本号（x.y.z）</label>
-        <input id="ver-version" placeholder="1.1.0" />
-        <label for="ver-schema">JSON Schema</label>
-        <textarea id="ver-schema">{ "type": "object", "properties": { "name": { "type": "string" }, "note": { "type": "string" } }, "required": ["name"] }</textarea>
-        <button type="button" id="ver-btn">提交版本草稿</button>
-      </div>
-
-      <div class="card">
-        <h3>3 · 冻结版本</h3>
-        <label for="frz-dataset">数据集</label>
-        <select id="frz-dataset"></select>
-        <label for="frz-version">版本号</label>
-        <input id="frz-version" placeholder="1.0.0" />
-        <button type="button" class="secondary" id="frz-btn">冻结并物化</button>
-        <p class="note">冻结会写入 R2（<code>schemas/{slug}/{version}.json</code>）并更新目录索引；同路径二次冻结会被拒绝。</p>
-      </div>
-
-      <div class="card">
-        <h3>目录与数据集</h3>
-        <button type="button" class="secondary" id="refresh-btn">刷新目录</button>
-        <div id="catalog"></div>
-      </div>
-    </section>
-
-    <h2>执行结果</h2>
-    <pre id="out">// 结果将显示在这里</pre>
-
-    <footer>LanTai 兰台 · 数据典藏机构 · P1 基础与编目</footer>
-  </div>
-
+    </div>
+  </main>
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
   <script>
-    const out = document.getElementById("out");
-    const show = (label, data) => {
-      out.textContent = `// ${label}\n` + JSON.stringify(data, null, 2);
-    };
-    const api = async (path, init) => {
-      const res = await fetch(path, init);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(`${res.status} ${JSON.stringify(body)}`);
-      return body;
-    };
-    const post = (path, body) =>
-      api(path, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+    (() => {
+      "use strict";
 
-    let datasets = [];
+      LT.mountShell({ active: "datasets" });
 
-    const fillSelects = () => {
-      for (const id of ["ver-dataset", "frz-dataset"]) {
-        const el = document.getElementById(id);
-        el.innerHTML = datasets
-          .map((d) => `<option value="${d.id}">${d.slug} · ${d.title}</option>`)
-          .join("");
+      const view = document.getElementById("view");
+      const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+      const VER_RE = /^\d+\.\d+\.\d+$/;
+      const TAG_CLASS = {
+        draft: "tag--draft",
+        frozen: "tag--frozen",
+        pending: "tag--pending",
+        staged: "tag--staged",
+        published: "tag--published",
+        rejected: "tag--rejected",
+      };
+      const SAMPLE_SCHEMA = JSON.stringify(
+        {
+          type: "object",
+          properties: {
+            name: { type: "string", title: "名称" },
+            value: { type: "number", title: "数值" },
+          },
+          required: ["name"],
+        },
+        null,
+        2,
+      );
+
+      let datasets = [];
+      let detailTabIndex = 0;
+
+      /* ---------- shared helpers ---------- */
+      function setView(node) {
+        LT.clear(view);
+        if (node) view.appendChild(node);
       }
-    };
 
-    const renderCatalog = (catalog) => {
-      const rows = (catalog.datasets || [])
-        .map(
-          (d) =>
-            `<tr><td>${d.slug}</td><td>${d.title}</td><td><span class="pill frozen">${d.currentSchemaVersion ?? "-"}</span></td></tr>`,
-        )
-        .join("");
-      const datasetRows = datasets
-        .map(
-          (d) =>
-            `<tr><td>${d.slug}</td><td>${d.title}</td><td>${d.schemaVersions
-              .map((v) => `<span class="pill ${v.status === "frozen" ? "frozen" : "draft"}">${v.version} · ${v.status}</span>`)
-              .join(" ")}</td></tr>`,
-        )
-        .join("");
-      document.getElementById("catalog").innerHTML = `
-        <h4>目录索引</h4>
-        <table><thead><tr><th>slug</th><th>标题</th><th>当前 Schema</th></tr></thead><tbody>${rows || "<tr><td colspan=3>（空）</td></tr>"}</tbody></table>
-        <h4>数据集</h4>
-        <table><thead><tr><th>slug</th><th>标题</th><th>版本</th></tr></thead><tbody>${datasetRows || "<tr><td colspan=3>（空）</td></tr>"}</tbody></table>`;
-    };
+      function tag(text, status) {
+        return LT.el("span", { class: `tag ${TAG_CLASS[status] || ""}`, text: text });
+      }
 
-    const refresh = async () => {
-      const [{ datasets: list }, catalog] = await Promise.all([
-        api("/api/admin/datasets"),
-        api("/api/admin/catalog"),
-      ]);
-      datasets = list;
-      fillSelects();
-      renderCatalog(catalog);
-    };
-
-    document.getElementById("reg-btn").onclick = async () => {
-      try {
-        const body = await post("/api/admin/datasets", {
-          slug: document.getElementById("reg-slug").value.trim(),
-          title: document.getElementById("reg-title").value.trim(),
-          schema: JSON.parse(document.getElementById("reg-schema").value),
+      function tableWrap(ariaLabel, headers, rows) {
+        const table = LT.el("table", { class: "table", "aria-label": ariaLabel });
+        const thead = LT.el("thead");
+        const htr = LT.el("tr");
+        headers.forEach((h) => {
+          htr.appendChild(LT.el("th", { scope: "col", text: h }));
         });
-        show("注册成功", body);
-        await refresh();
-      } catch (e) {
-        show("注册失败", String(e.message ?? e));
+        thead.appendChild(htr);
+        table.appendChild(thead);
+        const tbody = LT.el("tbody");
+        if (!rows.length) {
+          tbody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", { colspan: String(headers.length), class: "muted", text: "（暂无数据）" }),
+            ]),
+          );
+        } else {
+          rows.forEach((r) => {
+            tbody.appendChild(r);
+          });
+        }
+        table.appendChild(tbody);
+        return LT.el("div", { class: "table-wrap" }, [table]);
       }
-    };
 
-    document.getElementById("ver-btn").onclick = async () => {
-      try {
-        const id = document.getElementById("ver-dataset").value;
-        const body = await post(`/api/admin/datasets/${id}/schema-versions`, {
-          version: document.getElementById("ver-version").value.trim(),
-          schema: JSON.parse(document.getElementById("ver-schema").value),
+      function cardSection(title, fill) {
+        const card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(LT.el("div", { class: "card__head" }, [LT.el("h3", { text: title })]));
+        const body = LT.el("div", { class: "card__body stack" });
+        card.appendChild(body);
+        if (typeof fill === "function") fill(body);
+        return card;
+      }
+
+      function errorState(title, err, retry) {
+        const btn = LT.el("button", { class: "btn", type: "button", text: "重试" });
+        btn.addEventListener("click", retry);
+        const msg = err?.message ? err.message : "请稍后重试。";
+        return LT.emptyState(title, msg, btn);
+      }
+
+      async function run(btn, fn) {
+        LT.busy(btn, true);
+        try {
+          await fn();
+        } catch (err) {
+          LT.toast(err?.message ? err.message : "操作失败", { type: "error" });
+        } finally {
+          LT.busy(btn, false);
+        }
+      }
+
+      /* ---------- auth gate ---------- */
+      function loginGate(err) {
+        const redirect = encodeURIComponent("/admin");
+        setView(
+          LT.el("div", { class: "callout callout--warn" }, [
+            LT.el("div", { class: "stack" }, [
+              LT.el("strong", { text: "需要登录控制台" }),
+              LT.el("p", {
+                class: "muted",
+                text:
+                  "管理接口受 Cloudflare Access 保护，当前未登录" +
+                  (err && err.status === 401 ? "（401 未授权）" : "") +
+                  "。登录后即可编目数据集、冻结 Schema 并发布数据。",
+              }),
+              LT.el("div", { class: "cluster" }, [
+                LT.el("a", {
+                  class: "btn btn--primary",
+                  href: `/cdn-cgi/access/login?redirect_url=${redirect}`,
+                  text: "登录控制台",
+                }),
+              ]),
+            ]),
+          ]),
+        );
+      }
+
+      /* ---------- view one: dataset list ---------- */
+      async function showList() {
+        setView(LT.skeleton(6));
+        try {
+          const data = await LT.get("/api/admin/datasets");
+          datasets = (data?.datasets) || [];
+          setView(buildList());
+        } catch (err) {
+          if (err && err.status === 401) {
+            loginGate(err);
+            return;
+          }
+          setView(errorState("无法加载数据集", err, showList));
+        }
+      }
+
+      function buildList() {
+        const root = LT.el("div", { class: "stack-lg" });
+        const newBtn = LT.el("a", { class: "btn btn--primary btn--sm", href: "#new", text: "新建数据集" });
+
+        const card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(
+          LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "数据集" }), newBtn]),
+        );
+
+        const body = LT.el("div", { class: "card__body" });
+        if (!datasets.length) {
+          body.appendChild(
+            LT.emptyState(
+              "还没有数据集",
+              "创建第一个数据集，定义 Schema 并冻结后即可发布数据。",
+              LT.el("a", { class: "btn btn--primary", href: "#new", text: "新建数据集" }),
+            ),
+          );
+        } else {
+          const rows = datasets.map((d) => {
+            const versionTags = (d.schemaVersions || []).map((v) => tag(v.version, v.status));
+            return LT.el("tr", {}, [
+              LT.el("td", {}, [
+                LT.el("a", { class: "mono", href: `#d/${encodeURIComponent(d.id)}`, text: d.slug }),
+              ]),
+              LT.el("td", { text: d.title }),
+              LT.el("td", {}, [
+                d.currentSchemaVersion
+                  ? tag(d.currentSchemaVersion, "frozen")
+                  : LT.el("span", { class: "faint", text: "—" }),
+              ]),
+              LT.el("td", { class: "mono", text: d.currentDataVersion || "—" }),
+              LT.el("td", {}, [
+                LT.el("div", { class: "cluster" }, versionTags.length ? versionTags : [LT.el("span", { class: "faint", text: "—" })]),
+              ]),
+              LT.el("td", {}, [
+                LT.el("a", { class: "btn btn--sm", href: `#d/${encodeURIComponent(d.id)}`, text: "查看 / 管理" }),
+              ]),
+            ]);
+          });
+          body.appendChild(
+            tableWrap(
+              "数据集列表",
+              ["数据集", "标题", "当前 Schema", "数据版本", "版本标签", "操作"],
+              rows,
+            ),
+          );
+        }
+        card.appendChild(body);
+        root.appendChild(card);
+        return root;
+      }
+
+      /* ---------- view two: creation wizard ---------- */
+      function showWizard() {
+        const state = { slug: "", title: "" };
+        let editor = null;
+
+        const root = LT.el("div", { class: "stack-lg" });
+        root.appendChild(LT.el("a", { class: "btn btn--ghost btn--sm", href: "#", text: "← 返回数据集列表" }));
+
+        const card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "新建数据集" })]));
+        const body = LT.el("div", { class: "card__body" });
+        const stepsHost = LT.el("div");
+        const panel = LT.el("div", { class: "stack" });
+        body.appendChild(stepsHost);
+        body.appendChild(panel);
+        card.appendChild(body);
+        root.appendChild(card);
+        setView(root);
+
+        const st = LT.steps(stepsHost, ["基本信息", "Schema", "确认并创建"]);
+
+        function panelBasic() {
+          st.go(0);
+          LT.clear(panel);
+
+          const slugInput = LT.el("input", {
+            class: "input",
+            id: "new-slug",
+            placeholder: "例如：air-quality",
+            autocomplete: "off",
+            spellcheck: "false",
+            value: state.slug,
+          });
+          const slugErr = LT.el("p", { class: "field__error", hidden: true });
+          const titleInput = LT.el("input", {
+            class: "input",
+            id: "new-title",
+            placeholder: "例如：空气质量日报",
+            autocomplete: "off",
+            value: state.title,
+          });
+          const titleErr = LT.el("p", { class: "field__error", hidden: true });
+
+          slugInput.addEventListener("input", () => {
+            const v = slugInput.value.trim();
+            if (v === "") {
+              slugErr.hidden = true;
+              slugInput.setAttribute("aria-invalid", "false");
+              return;
+            }
+            const ok = SLUG_RE.test(v);
+            slugErr.hidden = ok;
+            slugErr.textContent = ok ? "" : "slug 仅可包含小写字母、数字与连字符，需以字母或数字开头，长度 1–63。";
+            slugInput.setAttribute("aria-invalid", ok ? "false" : "true");
+          });
+
+          panel.appendChild(
+            LT.el("div", { class: "field" }, [
+              LT.el("label", { class: "label", for: "new-slug", text: "数据集标识（slug）" }),
+              slugInput,
+              LT.el("p", { class: "hint", text: "用于接口地址与下载路径。仅小写字母、数字与连字符，以字母或数字开头。" }),
+              slugErr,
+            ]),
+          );
+          panel.appendChild(
+            LT.el("div", { class: "field" }, [
+              LT.el("label", { class: "label", for: "new-title", text: "标题" }),
+              titleInput,
+              LT.el("p", { class: "hint", text: "给读者看的中文名称，例如「空气质量日报」。" }),
+              titleErr,
+            ]),
+          );
+
+          const next = LT.el("button", { class: "btn btn--primary", type: "button", text: "下一步：编写 Schema" });
+          next.addEventListener("click", () => {
+            const slug = slugInput.value.trim();
+            const title = titleInput.value.trim();
+            let bad = false;
+
+            if (!SLUG_RE.test(slug)) {
+              slugErr.hidden = false;
+              slugErr.textContent = "请填写合法的 slug：小写字母、数字与连字符，以字母或数字开头，长度 1–63。";
+              slugInput.setAttribute("aria-invalid", "true");
+              slugInput.focus();
+              bad = true;
+            } else {
+              slugErr.hidden = true;
+              slugInput.setAttribute("aria-invalid", "false");
+            }
+
+            if (!title) {
+              titleErr.hidden = false;
+              titleErr.textContent = "请填写标题。";
+              titleInput.setAttribute("aria-invalid", "true");
+              if (!bad) titleInput.focus();
+              bad = true;
+            } else {
+              titleErr.hidden = true;
+              titleInput.setAttribute("aria-invalid", "false");
+            }
+
+            if (bad) return;
+            state.slug = slug;
+            state.title = title;
+            panelSchema();
+          });
+          panel.appendChild(LT.el("div", { class: "cluster" }, [next]));
+        }
+
+        function panelSchema() {
+          st.go(1);
+          LT.clear(panel);
+
+          const host = LT.el("div");
+          panel.appendChild(host);
+          editor = LT.jsonEditor(host, {
+            value: SAMPLE_SCHEMA,
+            label: "JSON Schema",
+            placeholder: '{\n  "type": "object",\n  "properties": {}\n}',
+          });
+
+          const back = LT.el("button", { class: "btn btn--ghost", type: "button", text: "上一步" });
+          back.addEventListener("click", panelBasic);
+          const next = LT.el("button", { class: "btn btn--primary", type: "button", text: "下一步：确认" });
+          next.addEventListener("click", () => {
+            const p = editor.parsed();
+            if (!p.ok || p.value === undefined) {
+              LT.toast("请填写合法的 JSON Schema", { type: "warn" });
+              editor.focus();
+              return;
+            }
+            panelConfirm();
+          });
+          panel.appendChild(LT.el("div", { class: "cluster" }, [back, next]));
+        }
+
+        function panelConfirm() {
+          st.go(2);
+          LT.clear(panel);
+
+          const parsed = editor.parsed();
+          const schemaText =
+            parsed.ok && parsed.value !== undefined ? JSON.stringify(parsed.value, null, 2) : editor.value();
+
+          panel.appendChild(
+            LT.el("dl", { class: "kv" }, [
+              LT.el("dt", { text: "标识（slug）" }),
+              LT.el("dd", { class: "mono", text: state.slug }),
+              LT.el("dt", { text: "标题" }),
+              LT.el("dd", { text: state.title }),
+              LT.el("dt", { text: "初始版本" }),
+              LT.el("dd", { class: "mono", text: "1.0.0" }),
+            ]),
+          );
+          panel.appendChild(
+            LT.el("div", { class: "field" }, [
+              LT.el("span", { class: "label", text: "JSON Schema 预览" }),
+              LT.el("pre", { class: "result", text: schemaText }),
+            ]),
+          );
+
+          const back = LT.el("button", { class: "btn btn--ghost", type: "button", text: "上一步" });
+          back.addEventListener("click", panelSchema);
+          const create = LT.el("button", { class: "btn btn--primary", type: "button", text: "创建数据集" });
+          create.addEventListener("click", () => {
+            const p = editor.parsed();
+            if (!p.ok || p.value === undefined) {
+              LT.toast("JSON Schema 无效，请返回上一步修正。", { type: "warn" });
+              return;
+            }
+            run(create, async () => {
+              const res = await LT.post("/api/admin/datasets", {
+                slug: state.slug,
+                title: state.title,
+                schema: p.value,
+              });
+              LT.toast("数据集已创建", { type: "ok" });
+              const id = res?.dataset?.id;
+              detailTabIndex = 0;
+              location.hash = id ? `#d/${encodeURIComponent(id)}` : "#";
+            });
+          });
+          panel.appendChild(LT.el("div", { class: "cluster" }, [back, create]));
+        }
+
+        panelBasic();
+      }
+
+      /* ---------- view three: dataset detail ---------- */
+      async function showDetail(id) {
+        setView(LT.skeleton(6));
+        try {
+          const detail = await LT.get(`/api/admin/datasets/${encodeURIComponent(id)}`);
+          const versionsRes = await LT.get(
+            `/api/admin/datasets/${encodeURIComponent(id)}/versions`,
+          ).catch(() => ({ versions: [] }));
+          setView(buildDetail(detail, (versionsRes?.versions) || []));
+        } catch (err) {
+          if (err && err.status === 401) {
+            loginGate(err);
+            return;
+          }
+          setView(
+            errorState("无法加载数据集详情", err, () => {
+              showDetail(id);
+            }),
+          );
+        }
+      }
+
+      function buildDetail(detail, versions) {
+        const dataset = (detail?.dataset) || {};
+        const schemaVersions = (detail?.schemaVersions) || [];
+
+        const root = LT.el("div", { class: "stack-lg" });
+        root.appendChild(LT.el("a", { class: "btn btn--ghost btn--sm", href: "#", text: "← 返回数据集列表" }));
+
+        root.appendChild(
+          LT.el("div", { class: "stack" }, [
+            LT.el("div", { class: "spread" }, [
+              LT.el("h2", { text: dataset.title || dataset.slug }),
+              LT.el("a", {
+                class: "btn btn--sm",
+                href: LT.datasetLink(dataset.slug),
+                target: "_blank",
+                rel: "noopener",
+                text: "查看公开页",
+              }),
+            ]),
+            LT.el("p", { class: "mono faint", text: dataset.slug }),
+            LT.el("dl", { class: "kv" }, [
+              LT.el("dt", { text: "当前 Schema 版本" }),
+              LT.el("dd", { class: "mono", text: dataset.currentSchemaVersion || "—" }),
+              LT.el("dt", { text: "当前数据版本" }),
+              LT.el("dd", { class: "mono", text: dataset.currentDataVersion || "—" }),
+              LT.el("dt", { text: "数据集 ID" }),
+              LT.el("dd", { class: "mono", text: dataset.id }),
+            ]),
+          ]),
+        );
+
+        root.appendChild(
+          tabs(
+            [
+              {
+                label: "Schema 版本",
+                build: (p) => {
+                  buildSchemaTab(p, dataset, schemaVersions);
+                },
+              },
+              {
+                label: "数据版本",
+                build: (p) => {
+                  buildDataTab(p, dataset, versions);
+                },
+              },
+              {
+                label: "原始产物",
+                build: (p) => {
+                  buildRawTab(p, dataset);
+                },
+              },
+            ],
+            detailTabIndex,
+          ).element,
+        );
+
+        return root;
+      }
+
+      function tabs(items, initial) {
+        const list = LT.el("div", { class: "tabs", role: "tablist" });
+        const panels = LT.el("div");
+        const buttons = [];
+
+        items.forEach((item, i) => {
+          const btn = LT.el("button", {
+            type: "button",
+            role: "tab",
+            id: `tab-${i}`,
+            "aria-selected": "false",
+            "aria-controls": `panel-${i}`,
+            text: item.label,
+          });
+          const pnl = LT.el("div", {
+            class: "stack-lg",
+            role: "tabpanel",
+            id: `panel-${i}`,
+            "aria-labelledby": `tab-${i}`,
+          });
+          btn.addEventListener("click", () => {
+            select(i);
+          });
+          list.appendChild(btn);
+          panels.appendChild(pnl);
+          buttons.push(btn);
+          item.panel = pnl;
+          item.__built = false;
         });
-        show("版本草稿已提交", body);
-        await refresh();
-      } catch (e) {
-        show("提交失败", String(e.message ?? e));
-      }
-    };
 
-    document.getElementById("frz-btn").onclick = async () => {
-      try {
-        const id = document.getElementById("frz-dataset").value;
-        const body = await post(`/api/admin/datasets/${id}/freeze`, {
-          version: document.getElementById("frz-version").value.trim(),
+        function select(i) {
+          detailTabIndex = i;
+          items.forEach((item, idx) => {
+            const active = idx === i;
+            buttons[idx].setAttribute("aria-selected", active ? "true" : "false");
+            item.panel.hidden = !active;
+          });
+          const item = items[i];
+          if (item && !item.__built) {
+            item.__built = true;
+            item.build(item.panel);
+          }
+        }
+
+        const host = LT.el("div", { class: "stack-lg" });
+        host.appendChild(list);
+        host.appendChild(panels);
+        select(typeof initial === "number" && initial >= 0 && initial < items.length ? initial : 0);
+        return { element: host, select: select };
+      }
+
+      function buildSchemaTab(panel, dataset, schemaVersions) {
+        panel.appendChild(
+          cardSection("Schema 版本", (body) => {
+            if (!schemaVersions.length) {
+              body.appendChild(LT.el("p", { class: "muted", text: "暂无 Schema 版本。" }));
+              return;
+            }
+            const rows = schemaVersions.map((v) => LT.el("tr", {}, [
+                LT.el("td", { class: "mono", text: v.version }),
+                LT.el("td", {}, [LT.el("span", { html: LT.statusTag(v.status) })]),
+              ]));
+            body.appendChild(tableWrap("Schema 版本列表", ["版本", "状态"], rows));
+          }),
+        );
+
+        panel.appendChild(
+          cardSection("追加 Schema 版本", (body) => {
+            const verInput = LT.el("input", {
+              class: "input",
+              id: "ver-version",
+              placeholder: "1.1.0",
+              autocomplete: "off",
+              spellcheck: "false",
+            });
+            const verErr = LT.el("p", { class: "field__error", hidden: true });
+            body.appendChild(
+              LT.el("div", { class: "field" }, [
+                LT.el("label", { class: "label", for: "ver-version", text: "版本号（x.y.z）" }),
+                verInput,
+                LT.el("p", { class: "hint", text: "使用语义化版本号，例如 1.1.0；提交后为草稿状态，需冻结后生效。" }),
+                verErr,
+              ]),
+            );
+
+            const host = LT.el("div", { class: "field" });
+            const ed = LT.jsonEditor(host, {
+              value: "",
+              label: "JSON Schema",
+              placeholder: '{\n  "type": "object",\n  "properties": {}\n}',
+            });
+            body.appendChild(host);
+
+            const btn = LT.el("button", { class: "btn btn--primary", type: "button", text: "提交版本草稿" });
+            btn.addEventListener("click", () => {
+              const version = verInput.value.trim();
+              if (!VER_RE.test(version)) {
+                verErr.hidden = false;
+                verErr.textContent = "请填写 x.y.z 形式的版本号。";
+                verInput.setAttribute("aria-invalid", "true");
+                verInput.focus();
+                return;
+              }
+              verErr.hidden = true;
+              verInput.setAttribute("aria-invalid", "false");
+
+              const p = ed.parsed();
+              if (!p.ok || p.value === undefined) {
+                LT.toast("JSON Schema 无效", { type: "warn" });
+                ed.focus();
+                return;
+              }
+              run(btn, async () => {
+                await LT.post(`/api/admin/datasets/${encodeURIComponent(dataset.id)}/schema-versions`, {
+                  version: version,
+                  schema: p.value,
+                });
+                LT.toast(`版本草稿 ${version} 已提交`, { type: "ok" });
+                await showDetail(dataset.id);
+              });
+            });
+            body.appendChild(LT.el("div", { class: "cluster" }, [btn]));
+          }),
+        );
+
+        panel.appendChild(
+          cardSection("冻结版本", (body) => {
+            body.appendChild(
+              LT.el("div", { class: "callout callout--info" }, [
+                LT.el("p", {
+                  class: "muted",
+                  text:
+                    "冻结会把该 Schema 版本写入 R2 静态发布物（schemas/" +
+                    dataset.slug +
+                    "/<版本>.json）并发布为不可变版本；同一版本不可重复冻结或覆盖。",
+                }),
+              ]),
+            );
+
+            const sel = LT.el("select", { class: "select", id: "freeze-version" });
+            sel.appendChild(LT.el("option", { value: "", text: "请选择版本" }));
+            schemaVersions.forEach((v) => {
+              sel.appendChild(
+                LT.el("option", {
+                  value: v.version,
+                  text: `${v.version} · ${LT.STATUS_LABEL[v.status] || v.status}`,
+                }),
+              );
+            });
+            body.appendChild(
+              LT.el("div", { class: "field" }, [
+                LT.el("label", { class: "label", for: "freeze-version", text: "选择要冻结的版本" }),
+                sel,
+              ]),
+            );
+
+            const btn = LT.el("button", { class: "btn btn--primary", type: "button", text: "冻结并物化" });
+            btn.disabled = schemaVersions.length === 0;
+            btn.addEventListener("click", async () => {
+              const version = sel.value;
+              if (!version) {
+                LT.toast("请选择要冻结的版本", { type: "warn" });
+                return;
+              }
+              const ok = await LT.confirmDialog({
+                title: "冻结 Schema 版本",
+                message:
+                  `冻结 ${version} 后该版本不可覆盖，将写入 R2 并更新数据目录。确定继续吗？`,
+                confirmLabel: "冻结",
+                danger: true,
+              });
+              if (!ok) return;
+              run(btn, async () => {
+                await LT.post(`/api/admin/datasets/${encodeURIComponent(dataset.id)}/freeze`, {
+                  version: version,
+                });
+                LT.toast(`已冻结 ${version}`, { type: "ok" });
+                await showDetail(dataset.id);
+              });
+            });
+            body.appendChild(LT.el("div", { class: "cluster" }, [btn]));
+          }),
+        );
+      }
+
+      function payloadCard(title, dataset, mode, note) {
+        return cardSection(title, (body) => {
+          body.appendChild(LT.el("p", { class: "muted", text: note }));
+          const host = LT.el("div", { class: "field" });
+          const ed = LT.jsonEditor(host, {
+            value: "",
+            label: "数据内容（JSON）",
+            placeholder: "{\n  \n}",
+          });
+          body.appendChild(host);
+
+          const btn = LT.el("button", {
+            class: "btn btn--primary",
+            type: "button",
+            text: mode === "stage" ? "预发布" : "发布",
+          });
+          btn.addEventListener("click", async () => {
+            const p = ed.parsed();
+            if (!p.ok || p.value === undefined) {
+              LT.toast("数据内容 JSON 无效", { type: "warn" });
+              ed.focus();
+              return;
+            }
+            if (mode === "publish") {
+              const ok = await LT.confirmDialog({
+                title: "发布数据",
+                message: "发布会生成不可变的数据快照并作为最新版本对外提供，且不能被覆盖。确定发布吗？",
+                confirmLabel: "发布",
+                danger: true,
+              });
+              if (!ok) return;
+            }
+            run(btn, async () => {
+              await LT.post(`/api/admin/datasets/${encodeURIComponent(dataset.id)}/${mode}`, {
+                payload: p.value,
+              });
+              LT.toast(mode === "stage" ? "已预发布" : "已发布", { type: "ok" });
+              await showDetail(dataset.id);
+            });
+          });
+          body.appendChild(LT.el("div", { class: "cluster" }, [btn]));
         });
-        show("冻结成功", body);
-        await refresh();
-      } catch (e) {
-        show("冻结失败", String(e.message ?? e));
       }
-    };
 
-    document.getElementById("refresh-btn").onclick = () =>
-      refresh().catch((e) => show("刷新失败", String(e.message ?? e)));
+      function buildDataTab(panel, dataset, versions) {
+        panel.appendChild(
+          cardSection("数据版本", (body) => {
+            if (!versions.length) {
+              body.appendChild(LT.el("p", { class: "muted", text: "还没有已发布或预发布的数据版本。" }));
+              return;
+            }
+            const rows = versions.map((v) => {
+              const hash = v.contentHash ? String(v.contentHash) : "";
+              return LT.el("tr", {}, [
+                LT.el("td", { class: "mono", text: v.version }),
+                LT.el("td", {}, [LT.el("span", { html: LT.statusTag(v.status) })]),
+                LT.el("td", { text: LT.fmtDateTime(v.publishedAt) }),
+                LT.el("td", {
+                  class: "mono truncate",
+                  title: hash,
+                  text: hash ? `${hash.slice(0, 16)}…` : "—",
+                }),
+              ]);
+            });
+            body.appendChild(
+              tableWrap("数据版本列表", ["版本", "状态", "发布时间", "内容哈希"], rows),
+            );
+          }),
+        );
 
-    refresh().catch((e) => show("初始化失败", String(e.message ?? e)));
+        panel.appendChild(
+          payloadCard("预发布（预览）", dataset, "stage", "生成仅供预览的数据快照，不会替换最新发布版本。"),
+        );
+        panel.appendChild(
+          payloadCard("发布数据", dataset, "publish", "发布会生成不可变的数据快照，并成为该数据集的最新版本。"),
+        );
+
+        panel.appendChild(
+          cardSection("回滚到历史版本", (body) => {
+            if (!versions.length) {
+              body.appendChild(LT.el("p", { class: "muted", text: "暂无历史数据版本可回滚。" }));
+              return;
+            }
+            const sel = LT.el("select", { class: "select", id: "rollback-version" });
+            sel.appendChild(LT.el("option", { value: "", text: "请选择版本" }));
+            versions.forEach((v) => {
+              sel.appendChild(
+                LT.el("option", {
+                  value: v.version,
+                  text: `${v.version} · ${LT.STATUS_LABEL[v.status] || v.status}`,
+                }),
+              );
+            });
+            body.appendChild(
+              LT.el("div", { class: "field" }, [
+                LT.el("label", { class: "label", for: "rollback-version", text: "选择要回滚到的数据版本" }),
+                sel,
+                LT.el("p", { class: "hint", text: "回滚会把最新指针指向所选历史版本。" }),
+              ]),
+            );
+
+            const btn = LT.el("button", { class: "btn btn--danger", type: "button", text: "回滚" });
+            btn.addEventListener("click", async () => {
+              const version = sel.value;
+              if (!version) {
+                LT.toast("请选择要回滚到的版本", { type: "warn" });
+                return;
+              }
+              const ok = await LT.confirmDialog({
+                title: "回滚数据版本",
+                message: `将最新指针回滚到 ${version}。这会改变对外提供的最新数据版本，确定继续吗？`,
+                confirmLabel: "回滚",
+                danger: true,
+              });
+              if (!ok) return;
+              run(btn, async () => {
+                await LT.post(`/api/admin/datasets/${encodeURIComponent(dataset.id)}/rollback`, {
+                  version: version,
+                });
+                LT.toast(`已回滚到 ${version}`, { type: "ok" });
+                await showDetail(dataset.id);
+              });
+            });
+            body.appendChild(LT.el("div", { class: "cluster" }, [btn]));
+          }),
+        );
+      }
+
+      function buildRawTab(panel, dataset) {
+        panel.appendChild(
+          cardSection("原始产物", (body) => {
+            const manifestPath = `/${dataset.slug}/manifest.json`;
+            const latestPath = `/${dataset.slug}/latest.json`;
+            body.appendChild(
+              LT.el("dl", { class: "kv" }, [
+                LT.el("dt", { text: "数据清单" }),
+                LT.el("dd", {}, [
+                  LT.el("a", {
+                    class: "mono",
+                    href: manifestPath,
+                    target: "_blank",
+                    rel: "noopener",
+                    text: manifestPath,
+                  }),
+                ]),
+                LT.el("dt", { text: "最新数据" }),
+                LT.el("dd", {}, [
+                  LT.el("a", {
+                    class: "mono",
+                    href: latestPath,
+                    target: "_blank",
+                    rel: "noopener",
+                    text: latestPath,
+                  }),
+                ]),
+                LT.el("dt", { text: "公开页面" }),
+                LT.el("dd", {}, [
+                  LT.el("a", { href: LT.datasetLink(dataset.slug), text: "在数据目录中查看" }),
+                ]),
+              ]),
+            );
+            body.appendChild(
+              LT.el("div", { class: "field" }, [
+                LT.el("span", { class: "label", text: "取用示例" }),
+                LT.el("pre", {
+                  class: "result",
+                  text: `curl -s ${location.origin}${manifestPath}\ncurl -s ${location.origin}${latestPath}`,
+                }),
+              ]),
+            );
+          }),
+        );
+      }
+
+      /* ---------- routing + boot ---------- */
+      function route() {
+        const hash = location.hash.replace(/^#\/?/, "");
+        if (hash === "new") {
+          showWizard();
+          return;
+        }
+        if (hash.indexOf("d/") === 0) {
+          showDetail(decodeURIComponent(hash.slice(2)));
+          return;
+        }
+        showList();
+      }
+
+      (async function boot() {
+        setView(LT.skeleton(6));
+        try {
+          await LT.get("/api/admin/session");
+        } catch (err) {
+          loginGate(err);
+          return;
+        }
+        window.addEventListener("hashchange", route);
+        route();
+      })();
+    })();
   </script>
 </body>
 </html>

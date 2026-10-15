@@ -3,57 +3,156 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 公开文档</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>开放接口 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/search">搜索</a>
-      <a href="/submit">提交</a>
-      <a href="/review">审阅</a>
-      <a href="/docs/" class="active">公开文档</a>
-    </nav>
-
-    <header class="top">
-      <p class="eyebrow">LanTai Docs · 公开文档站</p>
-      <h1>兰台文档</h1>
-      <p class="lede">
-        兰台以不可变 JSON Schema 编目、以数据集级不可变快照发布。读取完全走静态发布物
-        （R2 自定义域），写入与审阅走 Worker。文档站本身由 Worker 静态资产托管，不映射到 R2。
-      </p>
-    </header>
-
-    <section class="grid">
-      <div class="card">
-        <h3 style="margin-top:0">读者</h3>
-        <p class="note">如何消费发布数据：端点清单、静态 JSON 读取方式与缓存纪律。</p>
-        <p><a href="/docs/reader.html">阅读 →</a></p>
-      </div>
-      <div class="card">
-        <h3 style="margin-top:0">贡献者</h3>
-        <p class="note">匿名提交流程：状态机、追踪令牌与邮件通知。</p>
-        <p><a href="/docs/contributor.html">阅读 →</a></p>
-      </div>
-      <div class="card">
-        <h3 style="margin-top:0">运营者</h3>
-        <p class="note">保留策略、配额纪律与三项决策定论。</p>
-        <p><a href="/docs/operator.html">阅读 →</a></p>
-      </div>
-      <div class="card">
-        <h3 style="margin-top:0">快速入口</h3>
-        <p class="note">公开读取零计算；写入与审阅受保护。</p>
-        <p>
-          <a href="/">数据目录</a> ·
-          <a href="/search">跨数据集搜索</a> ·
-          <a href="/submit">匿名提交</a> ·
-          <a href="/review">审阅队列</a>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <header class="pagehead">
+        <p class="eyebrow">LanTai 文档</p>
+        <h1>开放接口</h1>
+        <p class="lede">
+          兰台把公开数据发布为静态 JSON：读取直接走 CDN、绕开 Worker、零计算；写入与审阅经 Worker 处理。
+          本页汇总四种角色的使用文档与全部开放接口，供你按需取用。
         </p>
-      </div>
-    </section>
+        <nav class="cluster" aria-label="文档导航">
+          <a href="/docs/" aria-current="page">总览</a>
+          <a href="/docs/reader.html">读者</a>
+          <a href="/docs/contributor.html">贡献者</a>
+          <a href="/docs/operator.html">运营者</a>
+        </nav>
+      </header>
 
-    <footer>LanTai 兰台 · 数据典藏机构 · 公开文档站</footer>
-  </div>
+      <section class="card card--flush">
+        <div class="card__head"><h2>平台概览</h2></div>
+        <div class="card__body">
+          <p>
+            兰台是公开数据的发布与共享平台。每个数据集都以不可变 JSON Schema 编目，发布为数据集级不可变快照，
+            因此同一版本的内容永不改变，可被安全地缓存与镜像。
+          </p>
+          <p>
+            任何人无需账号即可匿名提交符合 Schema 的数据；管理员审阅后预发布并正式发布，新的快照随即生效。
+            读取路径不消耗计算配额，写入与审阅才经 Worker。
+          </p>
+          <nav class="cluster" aria-label="快速入口">
+            <a class="btn btn--primary" href="/">浏览数据目录</a>
+            <a class="btn" href="/search">跨数据集搜索</a>
+            <a class="btn" href="/submit">匿名提交</a>
+            <a class="btn" href="/status">查询进度</a>
+          </nav>
+        </div>
+      </section>
+
+      <section>
+        <div class="cards">
+          <a class="dcard" href="/docs/">
+            <span class="dcard__slug">角色 · Overview</span>
+            <span class="dcard__title">总览</span>
+            <p class="muted">平台定位、开放接口一览与 <code>index.json</code> 的含义。你正在阅读本页。</p>
+            <span class="dcard__meta"><span class="tag tag--plain">入口</span></span>
+          </a>
+          <a class="dcard" href="/docs/reader.html">
+            <span class="dcard__slug">角色 · Reader</span>
+            <span class="dcard__title">读者指南</span>
+            <p class="muted">如何消费发布数据：端点清单、静态 JSON 读取方式与缓存分层。</p>
+            <span class="dcard__meta"><span class="tag tag--plain">读取 · 零计算</span></span>
+          </a>
+          <a class="dcard" href="/docs/contributor.html">
+            <span class="dcard__slug">角色 · Contributor</span>
+            <span class="dcard__title">贡献者指南</span>
+            <p class="muted">匿名提交流程：状态机、追踪令牌与邮件通知的边界。</p>
+            <span class="dcard__meta"><span class="tag tag--plain">提交 · 匿名</span></span>
+          </a>
+          <a class="dcard" href="/docs/operator.html">
+            <span class="dcard__slug">角色 · Operator</span>
+            <span class="dcard__title">运营者指南</span>
+            <p class="muted">保留策略、配额纪律、预发环境属性与三项决策定论。</p>
+            <span class="dcard__meta"><span class="tag tag--plain">运营 · 纪律</span></span>
+          </a>
+        </div>
+      </section>
+
+      <section class="card card--flush">
+        <div class="card__head"><h2>开放接口一览</h2></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>接口</th><th>方法</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/index.json</code></td><td>GET</td><td>数据目录索引：数据集清单与当前版本</td></tr>
+              <tr><td><code>/search/index.json</code></td><td>GET</td><td>跨数据集搜索索引，仅含字段元数据</td></tr>
+              <tr><td><code>/{slug}/manifest.json</code></td><td>GET</td><td>数据集清单：Schema 版本、数据版本、latest / preview</td></tr>
+              <tr><td><code>/{slug}/latest.json</code></td><td>GET</td><td>最新正式版指针</td></tr>
+              <tr><td><code>/{slug}/preview.json</code></td><td>GET</td><td>预览指针（<strong>非正式</strong>）</td></tr>
+              <tr><td><code>/{slug}/versions/{v}.json</code></td><td>GET</td><td>不可变数据快照</td></tr>
+              <tr><td><code>/schemas/{slug}/{v}.json</code></td><td>GET</td><td>冻结的 JSON Schema</td></tr>
+              <tr><td><code>/api/submissions</code></td><td>POST</td><td>匿名提交数据，返回追踪令牌</td></tr>
+              <tr><td><code>/api/submissions/{token}</code></td><td>GET</td><td>凭追踪令牌查询提交状态</td></tr>
+              <tr><td><code>/api/health</code></td><td>GET</td><td>服务健康检查</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card__foot">
+          <p class="muted">
+            公开读取无需鉴权、不消耗请求配额。写入与审阅接口受 Cloudflare Access 保护，未登录返回 401。
+          </p>
+        </div>
+      </section>
+
+      <section class="card card--flush">
+        <div class="card__head"><h2><code>/index.json</code> 是什么</h2></div>
+        <div class="card__body">
+          <p>
+            它是<strong>机器可读的数据目录索引</strong>——一份静态 JSON 文件，<strong>不是网页</strong>。
+            用浏览器直接打开只会看到原始 JSON，这是有意设计：CDN 直读、零计算，便于脚本与镜像消费。
+            人类阅读请改用<a href="/">数据目录页</a>。
+          </p>
+          <dl class="kv">
+            <dt>generatedAt</dt><dd>索引生成时间（ISO 8601）</dd>
+            <dt>datasets</dt><dd>已发布数据集数组</dd>
+            <dt>datasets[].slug</dt><dd>数据集标识，用于拼出 <code>/{slug}/manifest.json</code></dd>
+            <dt>datasets[].title</dt><dd>数据集标题</dd>
+            <dt>datasets[].currentSchemaVersion</dt><dd>当前冻结的 Schema 版本</dd>
+            <dt>datasets[].currentDataVersion</dt><dd>当前已发布的数据版本（可能缺省）</dd>
+            <dt>datasets[].updatedAt</dt><dd>最近更新时间</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="card card--flush">
+        <div class="card__head"><h2>取用示例</h2></div>
+        <div class="card__body">
+          <p>先读目录索引，再按 slug 读清单，最后读指针指向的不可变快照：</p>
+          <pre class="result">curl -s https://&lt;站点域&gt;/index.json
+
+# 依 datasets[].slug 读取清单
+curl -s https://&lt;站点域&gt;/{slug}/manifest.json
+
+# 依 manifest.latest 读取不可变快照
+curl -s https://&lt;站点域&gt;/{slug}/versions/{version}.json</pre>
+          <p class="muted">完整端点、缓存纪律与读取流程见<a href="/docs/reader.html">读者指南</a>。</p>
+        </div>
+      </section>
+
+      <nav class="cluster" aria-label="相关链接">
+        <a href="/">数据目录</a>
+        <a href="/search">跨数据集搜索</a>
+        <a href="/submit">匿名提交</a>
+        <a href="/status">查询进度</a>
+        <a href="/docs/reader.html">读者指南</a>
+        <a href="/docs/contributor.html">贡献者指南</a>
+        <a href="/docs/operator.html">运营者指南</a>
+      </nav>
+    </div>
+  </main>
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
+  <script>LT.mountShell({ active: "docs" });</script>
 </body>
 </html>

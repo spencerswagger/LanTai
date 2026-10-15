@@ -106,9 +106,11 @@ export async function submitChange(
 export interface SubmissionStatus {
   slug: string;
   status: string;
+  schemaVersion: string;
   createdAt: string;
   updatedAt: string;
   stagedVersion: string | null;
+  rejectReason: string | null;
 }
 
 /**
@@ -125,8 +127,10 @@ export async function trackSubmission(env: Env, token: string): Promise<Submissi
   return {
     slug: row.slug,
     status: row.status,
+    schemaVersion: row.schema_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     stagedVersion: row.staged_version,
+    rejectReason: row.reject_reason,
   };
 }

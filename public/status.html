@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>查询进度 · 兰台 LanTai</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <header class="pagehead">
+        <p class="eyebrow">进度</p>
+        <h1>查询提交进度</h1>
+        <p class="lede">
+          输入提交时获得的追踪令牌，查询该条匿名提交的审阅进度。令牌区分大小写，无需登录；
+          响应只包含状态与时间，不包含你提交的内容。
+        </p>
+      </header>
+
+      <section class="card">
+        <form class="card__body stack" id="query-form">
+          <div class="field">
+            <label class="label" for="token">追踪令牌</label>
+            <input class="input mono" id="token" name="token" type="text" autocomplete="off"
+              spellcheck="false" placeholder="粘贴提交后获得的令牌" aria-describedby="token-hint" />
+            <p class="hint" id="token-hint">
+              令牌由大小写字母、数字、连字符与下划线组成，长度 20–128 位。
+            </p>
+          </div>
+          <div class="cluster">
+            <button type="submit" class="btn btn--primary" id="query-btn">查询状态</button>
+            <a class="btn btn--ghost btn--sm" href="/submit">去提交数据</a>
+          </div>
+        </form>
+      </section>
+
+      <div id="status-result" role="status" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      LT.mountShell({ active: "track" });
+
+      var els = {
+        form: document.getElementById("query-form"),
+        token: document.getElementById("token"),
+        button: document.getElementById("query-btn"),
+        result: document.getElementById("status-result"),
+      };
+      var lastToken = "";
+
+      function addKv(dl, key, valueNode) {
+        dl.appendChild(LT.el("dt", { text: key }));
+        dl.appendChild(LT.el("dd", {}, valueNode));
+      }
+
+      function renderInitial() {
+        LT.clear(els.result);
+        els.result.appendChild(
+          LT.emptyState("尚未查询", "在上方输入追踪令牌后查询该条提交的进度。"),
+        );
+      }
+
+      function renderLoading() {
+        LT.clear(els.result);
+        els.result.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [LT.el("h3", { text: "查询中…" })]),
+            LT.el("div", { class: "card__body" }, LT.skeleton(4)),
+          ]),
+        );
+      }
+
+      function renderNotFound() {
+        LT.clear(els.result);
+        els.result.appendChild(
+          LT.emptyState(
+            "未找到该令牌",
+            "请确认令牌是否完整、是否正确复制。令牌区分大小写，且不包含空格。",
+          ),
+        );
+      }
+
+      function renderQueryError(err) {
+        LT.clear(els.result);
+        els.result.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [LT.el("h3", { text: "查询失败" })]),
+            LT.el("div", { class: "card__body" }, [
+              LT.el("div", {
+                class: "callout callout--danger",
+                text: (err?.message) || "查询失败，请稍后再试。",
+              }),
+            ]),
+          ]),
+        );
+      }
+
+      function buildTimeline(status) {
+        var map = { pending: 0, staged: 1, published: 3, rejected: 1 };
+        var labels =
+          status === "rejected"
+            ? ["待审", "已驳回"]
+            : ["待审", "已预发布", "已发布"];
+        var mount = LT.el("div");
+        var api = LT.steps(mount, labels);
+        api.go(map[status] != null ? map[status] : 0);
+        return mount.firstChild;
+      }
+
+      function renderStatus(data) {
+        LT.clear(els.result);
+        var status = (data?.status) || "pending";
+        var slug = (data?.slug) || "";
+
+        var kv = LT.el("dl", { class: "kv" });
+        addKv(
+          kv,
+          "数据集",
+          slug
+            ? LT.el("a", { href: LT.datasetLink(slug), class: "mono", text: slug })
+            : document.createTextNode("—"),
+        );
+        addKv(kv, "状态", LT.el("span", { html: LT.statusTag(status) }));
+        if (data?.schemaVersion) {
+          addKv(kv, "Schema 版本", LT.el("span", { class: "mono", text: String(data.schemaVersion) }));
+        }
+        if (data?.createdAt) {
+          addKv(kv, "提交时间", LT.el("span", { text: LT.fmtDateTime(data.createdAt) }));
+        }
+        if (data?.updatedAt) {
+          addKv(kv, "更新时间", LT.el("span", { text: LT.fmtDateTime(data.updatedAt) }));
+        }
+        if (data?.stagedVersion) {
+          addKv(kv, "预览版本", LT.el("span", { class: "mono", text: String(data.stagedVersion) }));
+        }
+
+        var body = LT.el("div", { class: "card__body stack" }, [buildTimeline(status), kv]);
+        if (status === "rejected") {
+          const reason = data?.rejectReason ? String(data.rejectReason) : "管理员未填写具体原因。";
+          body.appendChild(
+            LT.el("div", { class: "callout callout--danger" }, [
+              LT.el("div", {}, [
+                LT.el("strong", { text: "驳回原因：" }),
+                document.createTextNode(reason),
+              ]),
+            ]),
+          );
+        }
+
+        els.result.appendChild(
+          LT.el("section", { class: "card" }, [
+            LT.el("div", { class: "card__head" }, [
+              LT.el("h3", { text: "提交记录" }),
+              LT.el("span", { html: LT.statusTag(status) }),
+            ]),
+            body,
+            LT.el("div", { class: "card__foot cluster" }, [
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "刷新状态",
+                onclick: () => { query(lastToken); },
+              }),
+            ]),
+          ]),
+        );
+      }
+
+      function query(rawToken) {
+        var token = (rawToken || "").trim();
+        if (!token) {
+          LT.toast("请输入追踪令牌", { type: "warn" });
+          els.token.focus();
+          return;
+        }
+        lastToken = token;
+        els.token.value = token;
+        try {
+          history.replaceState(null, "", `/status?token=${encodeURIComponent(token)}`);
+        } catch (e) {}
+        renderLoading();
+        LT.busy(els.button, true);
+        LT.get(`/api/submissions/${encodeURIComponent(token)}`)
+          .then((data) => {
+            LT.busy(els.button, false);
+            renderStatus(data);
+          })
+          .catch((err) => {
+            LT.busy(els.button, false);
+            if (err && err.status === 404) renderNotFound();
+            else renderQueryError(err);
+          });
+      }
+
+      els.form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        query(els.token.value);
+      });
+
+      var initial = LT.param("token");
+      if (initial) query(initial);
+      else renderInitial();
+    })();
+  </script>
+</body>
+</html>

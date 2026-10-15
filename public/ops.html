@@ -3,118 +3,330 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 运营视图</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>运营 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/docs/">公开文档</a>
-      <a href="/api/admin/ops" target="_blank">运营 API (JSON)</a>
-    </nav>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+  <main id="main" tabindex="-1">
+    <div class="container container--wide">
+      <div class="console">
+        <nav class="sidenav" data-lt-sidenav aria-label="控制台导航"></nav>
+        <div class="console__main">
+          <div class="pagehead">
+            <p class="eyebrow">LanTai Console · 运营</p>
+            <h1>运营</h1>
+            <p class="lede">
+              查看当前运行环境、配额阈值、保留清理干跑清单与最近审计。清理动作只作用于非正式产物（未被引用的预览快照、超出保留窗口的已驳回提交），绝不触碰已发布快照、latest 指针或冻结 Schema。
+            </p>
+          </div>
 
-    <header class="top">
-      <p class="eyebrow">LanTai Ops · 运营</p>
-      <h1>运营视图（只读）</h1>
-      <p class="lede">
-        展示当前环境、配额阈值、保留清理干跑清单与最近审计。清理动作仅作用于非正式产物
-        （未被引用的预览快照与超窗的已驳回提交），绝不触碰已发布快照、latest 指针或冻结 Schema。
-      </p>
-    </header>
+          <div id="gate" class="callout callout--warn" style="display:none"></div>
 
-    <section class="grid">
-      <div class="card">
-        <h3 style="margin-top:0">环境</h3>
-        <p id="env" class="note">加载中…</p>
-        <h3>配额阈值</h3>
-        <p id="quota" class="note">加载中…</p>
+          <div id="app" class="stack-lg" hidden></div>
+        </div>
       </div>
-      <div class="card">
-        <h3 style="margin-top:0">保留清理（干跑）</h3>
-        <p class="note">未确认时仅预览，不删除任何对象。</p>
-        <button type="button" id="plan-btn">刷新干跑清单</button>
-        <pre id="plan">// 加载中…</pre>
-        <button type="button" class="secondary" id="run-btn">确认执行清理</button>
-        <p class="note">执行后：删除未被引用的预览快照，并把超窗已驳回提交的 payload 置空。</p>
-      </div>
-    </section>
-
-    <section class="card">
-      <h3 style="margin-top:0">最近审计（5 条）</h3>
-      <table>
-        <thead><tr><th>时间</th><th>actor</th><th>动作</th><th>目标</th><th>详情</th></tr></thead>
-        <tbody id="audit"><tr><td colspan="5">加载中…</td></tr></tbody>
-      </table>
-    </section>
-
-    <h2>执行结果</h2>
-    <pre id="out">// 结果将显示在这里</pre>
-
-    <footer>LanTai 兰台 · 数据典藏机构 · P5 运营打磨</footer>
-  </div>
-
+    </div>
+  </main>
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
   <script>
-    var out = document.getElementById("out");
-    var show = (label, data) => {
-      out.textContent = "// " + label + "\n" + JSON.stringify(data, null, 2);
-    };
+    (() => {
+      "use strict";
 
-    function renderAudit(rows) {
-      var body = document.getElementById("audit");
-      if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="5">暂无审计记录</td></tr>';
-        return;
+      LT.mountShell({ active: "ops" });
+
+      var gate = LT.$("#gate");
+      var app = LT.$("#app");
+
+      /* ---------- 未登录闸门 ---------- */
+      function showGate() {
+        LT.clear(gate);
+        gate.style.display = "";
+        gate.appendChild(
+          LT.el("div", { class: "stack", style: "margin:0" }, [
+            LT.el("strong", { text: "需要管理员身份" }),
+            LT.el("p", {
+              class: "muted",
+              style: "margin:0",
+              text: "运营页受 Cloudflare Access 保护。登录后可查看环境、配额与审计，并执行保留清理；未登录时无法读取任何运营数据。",
+            }),
+            LT.el("div", { class: "cluster" }, [
+              LT.el("a", {
+                class: "btn btn--primary",
+                href: `/cdn-cgi/access/login?redirect_url=${encodeURIComponent("/ops")}`,
+                text: "登录控制台",
+              }),
+              LT.el("a", { class: "btn btn--ghost", href: "/", text: "返回数据目录" }),
+              LT.el("a", { class: "btn btn--ghost", href: "/docs/operator.html", text: "运营说明" }),
+            ]),
+          ]),
+        );
+        app.hidden = true;
       }
-      body.innerHTML = rows
-        .map((r) => (
-            "<tr><td>" + (r.createdAt || "") + "</td><td>" + (r.actor || "—") + "</td><td>" +
-            (r.action || "") + "</td><td>" + (r.target || "—") + "</td><td><code>" +
-            JSON.stringify(r.detail) + "</code></td></tr>"
-          ))
-        .join("");
-    }
 
-    function load() {
-      fetch("/api/admin/ops")
-        .then((r) => {
-          if (!r.ok) throw new Error("HTTP " + r.status);
-          return r.json();
-        })
-        .then((data) => {
-          document.getElementById("env").textContent = data.environment || "-";
-          document.getElementById("quota").textContent = data.quotaThreshold || "-";
-          document.getElementById("plan").textContent = JSON.stringify(data.retention, null, 2);
-          renderAudit(data.latestAudit || []);
+      function fmtCell(v) {
+        if (v === null || v === undefined) return "—";
+        return typeof v === "object" ? JSON.stringify(v) : String(v);
+      }
+
+      /* ---------- 外壳 ---------- */
+      var envKv, planBox, auditBody, runBtn;
+
+      function buildApp() {
+        LT.clear(app);
+        app.hidden = false;
+
+        envKv = LT.el("dl", { class: "kv", id: "env-kv" });
+
+        var envCard = LT.el("div", { class: "card" }, [
+          LT.el("h2", { style: "margin-top:0", text: "运行环境" }),
+          envKv,
+        ]);
+
+        planBox = LT.el("div", { id: "plan", role: "status", "aria-live": "polite" });
+
+        var refreshBtn = LT.el("button", {
+          class: "btn btn--ghost",
+          type: "button",
+          text: "刷新清单",
+        });
+        refreshBtn.addEventListener("click", () => {
+          loadOps();
+        });
+
+        runBtn = LT.el("button", {
+          class: "btn btn--danger",
+          type: "button",
+          text: "确认执行清理",
+        });
+        runBtn.addEventListener("click", () => {
+          runRetention();
+        });
+
+        var retentionCard = LT.el("div", { class: "card stack" }, [
+          LT.el("h2", { style: "margin-top:0", text: "保留清理（干跑）" }),
+          LT.el("div", { class: "callout callout--info" }, [
+            LT.el("div", { class: "stack", style: "margin:0" }, [
+              LT.el("strong", { text: "未确认时仅预览，不删除任何对象。" }),
+              LT.el("p", {
+                class: "muted",
+                style: "margin:0",
+                text: "执行清理会删除未被引用的预览快照，并把超出保留窗口的已驳回提交 payload 置空；已发布快照、latest 指针与冻结 Schema 不受影响。",
+              }),
+            ]),
+          ]),
+          planBox,
+          LT.el("div", { class: "cluster" }, [refreshBtn, runBtn]),
+        ]);
+
+        auditBody = LT.el("tbody", { id: "audit-body" });
+
+        var auditCard = LT.el("div", { class: "card card--flush" }, [
+          LT.el("div", { class: "card__head" }, [
+            LT.el("h2", { text: "最近审计" }),
+            LT.el("span", { class: "faint", text: "最新 5 条记录" }),
+          ]),
+          LT.el("div", { class: "table-wrap" }, [
+            LT.el("table", { class: "table" }, [
+              LT.el("thead", {}, [
+                LT.el("tr", {}, [
+                  LT.el("th", { text: "时间" }),
+                  LT.el("th", { text: "操作者" }),
+                  LT.el("th", { text: "动作" }),
+                  LT.el("th", { text: "目标" }),
+                  LT.el("th", { text: "详情" }),
+                ]),
+              ]),
+              auditBody,
+            ]),
+          ]),
+        ]);
+
+        app.appendChild(LT.el("div", { class: "stack-lg" }, [envCard, retentionCard, auditCard]));
+      }
+
+      /* ---------- 渲染 ---------- */
+      function renderEnv(data) {
+        LT.clear(envKv);
+        function kv(k, node) {
+          envKv.appendChild(LT.el("dt", { text: k }));
+          envKv.appendChild(LT.el("dd", {}, node));
+        }
+        kv("环境", LT.el("code", { text: data.environment || "—" }));
+        kv(
+          "配额阈值",
+          LT.el("span", {
+            class: "num",
+            text:
+              typeof data.quotaThreshold === "number"
+                ? LT.fmtNumber(data.quotaThreshold)
+                : data.quotaThreshold != null
+                  ? String(data.quotaThreshold)
+                  : "—",
+          }),
+        );
+      }
+
+      function renderRetention(retention) {
+        var isObjRow =
+          Array.isArray(retention) &&
+          retention.length > 0 &&
+          retention[0] !== null &&
+          typeof retention[0] === "object";
+
+        if (isObjRow) {
+          const cols = Object.keys(retention[0]);
+          const tbody = LT.el("tbody");
+          retention.forEach((row) => {
+            tbody.appendChild(
+              LT.el("tr", {}, cols.map((c) => LT.el("td", {}, [LT.el("code", { text: fmtCell(row[c]) })]))),
+            );
+          });
+          return LT.el("div", { class: "table-wrap" }, [
+            LT.el("table", { class: "table" }, [
+              LT.el("thead", {}, [
+                LT.el("tr", {}, cols.map((c) => LT.el("th", { text: c }))),
+              ]),
+              tbody,
+            ]),
+          ]);
+        }
+
+        var empty =
+          retention === null ||
+          retention === undefined ||
+          (Array.isArray(retention) && retention.length === 0) ||
+          (typeof retention === "object" && !Array.isArray(retention) && Object.keys(retention).length === 0);
+
+        if (empty) {
+          return LT.el("p", { class: "muted", text: "暂无待清理对象。" });
+        }
+        return LT.el("pre", { class: "result", text: JSON.stringify(retention, null, 2) });
+      }
+
+      function renderAudit(rows) {
+        LT.clear(auditBody);
+        if (!rows?.length) {
+          auditBody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", { colspan: "5", class: "muted", text: "暂无审计记录。" }),
+            ]),
+          );
+          return;
+        }
+        rows.forEach((r) => {
+          auditBody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", { class: "num", text: LT.fmtDateTime(r.createdAt) }),
+              LT.el("td", {}, [LT.el("span", { class: "mono", text: r.actor || "—" })]),
+              LT.el("td", {}, [LT.el("span", { class: "tag tag--plain", text: r.action || "—" })]),
+              LT.el("td", {}, [LT.el("code", { text: r.target != null ? String(r.target) : "—" })]),
+              LT.el("td", {}, [LT.el("code", { text: fmtCell(r.detail) })]),
+            ]),
+          );
+        });
+      }
+
+      /* ---------- 载入 / 错误三态 ---------- */
+      function setLoading() {
+        LT.clear(envKv);
+        envKv.appendChild(LT.el("dd", {}, [LT.skeleton(2)]));
+        LT.clear(planBox);
+        planBox.appendChild(LT.skeleton(4));
+        LT.clear(auditBody);
+        auditBody.appendChild(
+          LT.el("tr", {}, [LT.el("td", { colspan: "5" }, [LT.skeleton(2)])]),
+        );
+      }
+
+      function setError(e) {
+        var expired = e && e.status === 401;
+        var msg = expired
+          ? "登录已失效，请重新登录控制台。"
+          : (e?.message) || "无法读取运营数据，请稍后重试。";
+
+        LT.clear(envKv);
+        envKv.appendChild(LT.el("dt", { text: "状态" }));
+        envKv.appendChild(LT.el("dd", {}, [LT.el("span", { class: "tag tag--error", text: "不可用" })]));
+
+        LT.clear(planBox);
+        planBox.appendChild(
+          LT.el("div", { class: "callout callout--danger" }, [
+            LT.el("div", { class: "stack", style: "margin:0" }, [
+              LT.el("strong", { text: "运营数据加载失败" }),
+              LT.el("p", { class: "muted", style: "margin:0", text: msg }),
+              LT.el("div", {}, [
+                LT.el("button", {
+                  class: "btn btn--sm",
+                  type: "button",
+                  text: "重试",
+                  onclick: () => {
+                    loadOps();
+                  },
+                }),
+              ]),
+            ]),
+          ]),
+        );
+
+        LT.clear(auditBody);
+        auditBody.appendChild(
+          LT.el("tr", {}, [LT.el("td", { colspan: "5", class: "muted", text: "审计暂不可用。" })]),
+        );
+      }
+
+      function loadOps() {
+        setLoading();
+        LT.get("/api/admin/ops")
+          .then((data) => {
+            data = data || {};
+            renderEnv(data);
+            LT.clear(planBox);
+            planBox.appendChild(renderRetention(data.retention));
+            renderAudit(data.latestAudit || []);
+          })
+          .catch(setError);
+      }
+
+      /* ---------- 执行清理 ---------- */
+      function runRetention() {
+        LT.confirmDialog({
+          title: "确认执行保留清理？",
+          message:
+            "将删除未被引用的预览快照，并把超出保留窗口的已驳回提交 payload 置空。该操作不可撤销；已发布快照、latest 指针与冻结 Schema 不受影响。",
+          confirmLabel: "确认执行",
+          danger: true,
+        }).then((ok) => {
+          if (!ok) return;
+          LT.busy(runBtn, true);
+          LT.post("/api/admin/ops/retention/run", { confirm: true })
+            .then(() => {
+              LT.toast("保留清理已执行", { type: "ok" });
+              loadOps();
+            })
+            .catch((e) => {
+              LT.toast(`清理失败：${(e?.message) || "请稍后重试"}`, { type: "error" });
+            })
+            .finally(() => {
+              LT.busy(runBtn, false);
+            });
+        });
+      }
+
+      /* ---------- 启动 ---------- */
+      LT.get("/api/admin/session")
+        .then(() => {
+          buildApp();
+          loadOps();
         })
         .catch(() => {
-          document.getElementById("plan").textContent = "// 运营视图暂不可用";
-          document.getElementById("audit").innerHTML =
-            '<tr><td colspan="5">运营视图暂不可用</td></tr>';
+          showGate();
         });
-    }
-
-    document.getElementById("plan-btn").addEventListener("click", () => {
-      load();
-    });
-
-    document.getElementById("run-btn").addEventListener("click", () => {
-      fetch("/api/admin/ops/retention/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
-      })
-        .then((r) => r.json())
-        .then((body) => {
-          show("保留清理已执行", body);
-          load();
-        })
-        .catch((e) => {
-          show("保留清理失败", String(e));
-        });
-    });
-
-    load();
+    })();
   </script>
 </body>
 </html>

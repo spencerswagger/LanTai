@@ -3,104 +3,190 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 跨数据集搜索</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>跨数据集搜索 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/search" class="active">搜索</a>
-      <a href="/index.json">index.json</a>
-      <a href="/admin">管理后台</a>
-    </nav>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
 
-    <header class="top">
-      <p class="eyebrow">LanTai · 检索</p>
-      <h1>跨数据集搜索</h1>
-      <p class="lede">
-        在静态搜索索引 <code>/search/index.json</code> 上按 slug、标题与字段名过滤。
-        索引仅收录字段元数据（名称 / 标题 / 类型），不包含任何 payload 值。
-      </p>
-    </header>
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <section class="pagehead">
+        <p class="eyebrow">检索</p>
+        <h1>跨数据集搜索</h1>
+        <p class="lede">
+          在静态索引 <code>/search/index.json</code> 上，按数据集 slug、标题与字段元数据
+          （字段名 / 标题 / 类型）过滤。索引仅收录字段元数据，不包含任何 payload 值。
+        </p>
+      </section>
 
-    <section class="card">
-      <label for="q">关键词</label>
-      <input id="q" type="search" placeholder="例如：人口、name、常住" autocomplete="off" />
-      <button type="button" id="clear-btn" class="secondary">清空</button>
-      <p class="note" id="count">加载中…</p>
+      <form id="search-form" class="searchbar">
+        <label class="sr-only" for="q">关键词</label>
+        <input id="q" class="input" type="search" placeholder="例如：人口、name、常住…" autocomplete="off" />
+        <button type="submit" class="btn btn--primary">搜索</button>
+        <button type="button" class="btn btn--ghost" id="clear-btn">清空</button>
+      </form>
+
+      <p class="muted" id="count" role="status" aria-live="polite">正在加载搜索索引…</p>
       <div id="results"></div>
-    </section>
+    </div>
+  </main>
 
-    <footer>LanTai 兰台 · 数据典藏机构 · 读取零计算</footer>
-  </div>
+  <footer class="sitefoot" data-lt-footer></footer>
 
+  <script src="/app.js"></script>
   <script>
-    var docs = [];
-    var results = document.getElementById("results");
-    var count = document.getElementById("count");
+    (() => {
+      "use strict";
+      LT.mountShell({ active: "search" });
 
-    function fieldMatches(field, q) {
-      return (
-        (field.name || "").toLowerCase().includes(q) ||
-        (field.title || "").toLowerCase().includes(q)
-      );
-    }
+      var form = LT.$("#search-form");
+      var input = LT.$("#q");
+      var clearBtn = LT.$("#clear-btn");
+      var countEl = LT.$("#count");
+      var results = LT.$("#results");
+      var docs = [];
 
-    function docMatches(doc, q) {
-      if ((doc.slug || "").toLowerCase().includes(q)) return true;
-      if ((doc.title || "").toLowerCase().includes(q)) return true;
-      return (doc.fields || []).some((f) => fieldMatches(f, q));
-    }
-
-    function render() {
-      var q = document.getElementById("q").value.trim().toLowerCase();
-      var matched = q ? docs.filter((d) => docMatches(d, q)) : docs;
-      count.textContent = "命中 " + matched.length + " / " + docs.length + " 个数据集";
-      if (matched.length === 0) {
-        results.innerHTML = '<p class="note">没有匹配的数据集。</p>';
-        return;
+      function fieldMatches(f, q) {
+        return (
+          String(f.name || "").toLowerCase().indexOf(q) !== -1 ||
+          String(f.title || "").toLowerCase().indexOf(q) !== -1 ||
+          String(f.type || "").toLowerCase().indexOf(q) !== -1
+        );
       }
-      var cards = matched
-        .map((d) => {
-          var fields = (d.fields || [])
-            .map((f) => '<span class="pill">' + (f.title || f.name) + " · " + (f.type || "?") + "</span>")
-            .join(" ");
-          return (
-            '<div class="card"><h3 style="margin-top:0">' +
-            '<a href="/' + d.slug + '/manifest.json">' + d.slug + "</a></h3>" +
-            "<p>" + (d.title || "") + "</p>" +
-            '<p class="note">Schema ' + (d.schemaVersion || "-") + " · 数据版本 " + (d.dataVersion || "-") + "</p>" +
-            "<p>" + (fields || '<span class="note">无字段元数据</span>') + "</p></div>"
+
+      function docMatches(d, q) {
+        return (
+          String(d.slug || "").toLowerCase().indexOf(q) !== -1 ||
+          String(d.title || "").toLowerCase().indexOf(q) !== -1 ||
+          (d.fields || []).some((f) => fieldMatches(f, q))
+        );
+      }
+
+      function dcard(d) {
+        var card = LT.el("a", { class: "dcard", href: LT.datasetLink(d.slug) }, [
+          LT.el("span", { class: "dcard__slug", text: d.slug }),
+          LT.el("span", { class: "dcard__title", text: d.title || d.slug }),
+        ]);
+        var meta = LT.el("div", { class: "dcard__meta" });
+        meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `Schema ${d.schemaVersion || "—"}` }));
+        meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `数据 ${d.dataVersion || "—"}` }));
+        meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `${(d.fields || []).length} 字段` }));
+        card.appendChild(meta);
+        return card;
+      }
+
+      function render() {
+        var raw = input.value.trim();
+        var q = raw.toLowerCase();
+        var matched = q
+          ? docs.filter((d) => docMatches(d, q))
+          : docs;
+
+        countEl.textContent = q
+          ? `命中 ${matched.length} / ${docs.length} 个数据集`
+          : `共 ${docs.length} 个数据集`;
+
+        LT.clear(results);
+
+        if (docs.length === 0) {
+          results.appendChild(
+            LT.emptyState(
+              "还没有可搜索的数据集",
+              "数据目录为空。管理员发布数据集后，其字段元数据会进入搜索索引。",
+              LT.el("a", { class: "btn btn--sm", href: "/", text: "返回数据目录" }),
+            ),
           );
-        })
-        .join("");
-      results.innerHTML = cards;
-    }
+          return;
+        }
 
-    function load() {
-      fetch("/search/index.json")
-        .then((r) => {
-          if (!r.ok) throw new Error("HTTP " + r.status);
-          return r.json();
-        })
-        .then((index) => {
-          docs = index.datasets || [];
-          render();
-        })
-        .catch(() => {
-          count.textContent = "搜索索引暂不可用";
-          results.innerHTML =
-            '<p class="note">无法加载 <code>/search/index.json</code>，请稍后重试。</p>';
+        if (matched.length === 0) {
+          results.appendChild(
+            LT.emptyState(
+              "没有匹配的数据集",
+              `没有 slug、标题或字段包含「${raw}」的数据集。`,
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "清空关键词",
+                onclick: () => {
+                  input.value = "";
+                  render();
+                  input.focus();
+                },
+              }),
+            ),
+          );
+          return;
+        }
+
+        var cards = LT.el("div", { class: "cards" });
+        matched.forEach((d) => {
+          cards.appendChild(dcard(d));
         });
-    }
+        results.appendChild(cards);
+      }
 
-    document.getElementById("q").addEventListener("input", render);
-    document.getElementById("clear-btn").addEventListener("click", () => {
-      document.getElementById("q").value = "";
-      render();
-    });
-    load();
+      function renderSkeleton() {
+        countEl.textContent = "正在加载搜索索引…";
+        LT.clear(results);
+        var cards = LT.el("div", { class: "cards" });
+        for (let i = 0; i < 3; i++) {
+          cards.appendChild(LT.el("div", { class: "card" }, [LT.skeleton(3)]));
+        }
+        results.appendChild(cards);
+      }
+
+      function renderError() {
+        countEl.textContent = "搜索索引暂不可用";
+        LT.clear(results);
+        results.appendChild(
+          LT.emptyState(
+            "搜索索引暂不可用",
+            "无法读取 /search/index.json，请稍后重试。",
+            LT.el("button", {
+              class: "btn btn--sm",
+              type: "button",
+              text: "重试",
+              onclick: load,
+            }),
+          ),
+        );
+      }
+
+      function load() {
+        renderSkeleton();
+        LT.loadJsonStrict("/search/index.json")
+          .then((index) => {
+            docs = (index?.datasets) || [];
+            render();
+          })
+          .catch(renderError);
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        render();
+      });
+
+      input.addEventListener(
+        "input",
+        LT.debounce(() => {
+          if (docs.length) render();
+        }, 120),
+      );
+
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        render();
+        input.focus();
+      });
+
+      load();
+    })();
   </script>
 </body>
 </html>

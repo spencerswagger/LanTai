@@ -3,413 +3,438 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 审阅台</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>审阅台 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/">目录</a>
-      <a href="/submit">匿名贡献</a>
-      <a href="/admin">管理后台</a>
-      <a href="/review" class="active">审阅台</a>
-    </nav>
-
-    <header class="top">
-      <p class="eyebrow">LanTai Admin · 审阅</p>
-      <h1>审阅预览与合并</h1>
-      <p class="lede">
-        左侧为待审队列（pending / staged）。选中后可对照三视图——结构化只读渲染、候选 JSON 树、
-        与当前已发布版本的 diff——再执行预发布、正式发布或驳回。
-      </p>
-    </header>
-
-    <section class="review-grid">
-      <aside class="card">
-        <h3>待审队列</h3>
-        <button type="button" class="secondary" id="refresh-btn">刷新队列</button>
-        <div id="queue" class="queue">（加载中…）</div>
-      </aside>
-
-      <div class="card">
-        <div id="detail-empty" class="note">请从左侧选择一条待审提交。</div>
-        <div id="detail" style="display:none">
-          <h3>提交元数据</h3>
-          <div id="meta" class="meta"></div>
-
-          <h3>结构化渲染（render）</h3>
-          <div id="render-view" class="render"></div>
-
-          <h3>候选 JSON 树（jsonTree）</h3>
-          <div id="json-tree" class="tree"></div>
-
-          <h3>与当前版本 diff</h3>
-          <p class="note">基准：<span id="diff-base" class="pill">-</span></p>
-          <div id="diff-view" class="diff"></div>
-
-          <h3>动作</h3>
-          <div class="actions">
-            <button type="button" class="secondary" id="stage-btn">预发布（stage）</button>
-            <button type="button" id="promote-btn">正式发布（promote）</button>
-            <button type="button" class="danger" id="reject-btn">驳回（reject）</button>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
+  <main id="main" tabindex="-1">
+    <div class="container container--wide">
+      <div class="console">
+        <nav class="sidenav" data-lt-sidenav aria-label="控制台导航"></nav>
+        <div class="console__main">
+          <div class="pagehead">
+            <p class="eyebrow">LanTai Console · 审阅</p>
+            <h1>审阅台</h1>
+            <p class="lede">
+              从左侧待审队列选中一条提交，对照结构化渲染、JSON 树与当前已发布版本的差异，再执行预发布、正式发布或驳回。正式发布产生不可变快照，驳回会记录原因，二者均需二次确认。
+            </p>
           </div>
-          <label for="reject-reason">驳回原因（可选）</label>
-          <input id="reject-reason" placeholder="说明驳回理由" />
-          <pre id="out">// 动作结果将显示在这里</pre>
+
+          <div id="gate" class="callout callout--warn" style="display:none"></div>
+
+          <div id="app" class="stack-lg" hidden></div>
         </div>
       </div>
-    </section>
-
-    <footer>LanTai 兰台 · 数据典藏机构 · P4 审阅预览与合并</footer>
-  </div>
-
+    </div>
+  </main>
+  <footer class="sitefoot" data-lt-footer></footer>
+  <script src="/app.js"></script>
   <script>
-    const API = "/api/admin";
-    const $ = (id) => document.getElementById(id);
+    (() => {
+      "use strict";
 
-    const showOut = (label, data) => {
-      $("out").textContent = `// ${label}\n${typeof data === "string" ? data : JSON.stringify(data, null, 2)}`;
-    };
+      LT.mountShell({ active: "review" });
 
-    const api = async (path, init) => {
-      const res = await fetch(path, init);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = body?.error
-          ? `${res.status} ${body.error.code}: ${body.error.message}`
-          : `${res.status}`;
-        throw new Error(msg);
+      var gate = LT.$("#gate");
+      var app = LT.$("#app");
+
+      var state = { id: null, status: "pending,staged" };
+
+      /* ---------- 未登录闸门 ---------- */
+      function showGate() {
+        LT.clear(gate);
+        gate.style.display = "";
+        gate.appendChild(
+          LT.el("div", { class: "stack", style: "margin:0" }, [
+            LT.el("strong", { text: "需要管理员身份" }),
+            LT.el("p", {
+              class: "muted",
+              style: "margin:0",
+              text: "审阅台受 Cloudflare Access 保护。登录后可读取待审队列并执行预发布、发布与驳回；未登录时无法访问任何审阅数据。",
+            }),
+            LT.el("div", { class: "cluster" }, [
+              LT.el("a", {
+                class: "btn btn--primary",
+                href: `/cdn-cgi/access/login?redirect_url=${encodeURIComponent("/review")}`,
+                text: "登录控制台",
+              }),
+              LT.el("a", { class: "btn btn--ghost", href: "/", text: "返回数据目录" }),
+              LT.el("a", { class: "btn btn--ghost", href: "/docs/operator.html", text: "运营说明" }),
+            ]),
+          ]),
+        );
+        app.hidden = true;
       }
-      return body;
-    };
 
-    const post = (path, body) =>
-      api(path, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body ?? {}),
-      });
+      /* ---------- 外壳 ---------- */
+      function buildApp() {
+        LT.clear(app);
+        app.hidden = false;
 
-    let currentId = null;
+        var filter = LT.el("select", {
+          class: "select",
+          id: "status-filter",
+          "aria-label": "按状态过滤待审队列",
+        });
+        [
+          { v: "pending,staged", t: "待审与已预发布" },
+          { v: "pending", t: "仅待审" },
+          { v: "staged", t: "仅已预发布" },
+          { v: "published", t: "已发布" },
+          { v: "rejected", t: "已驳回" },
+        ].forEach((o) => {
+          var opt = LT.el("option", { value: o.v, text: o.t });
+          if (o.v === state.status) opt.selected = true;
+          filter.appendChild(opt);
+        });
+        filter.addEventListener("change", () => {
+          state.status = filter.value;
+          loadQueue();
+        });
 
-    const loadQueue = async () => {
-      const queue = $("queue");
-      try {
-        const { submissions } = await api(`${API}/submissions`);
-        if (!submissions || submissions.length === 0) {
-          queue.textContent = "（暂无待审提交）";
+        var refreshBtn = LT.el("button", {
+          class: "btn btn--ghost btn--sm",
+          type: "button",
+          text: "刷新",
+        });
+        refreshBtn.addEventListener("click", () => {
+          loadQueue();
+        });
+
+        var queue = LT.el("div", {
+          class: "queue",
+          id: "queue",
+          role: "group",
+          "aria-label": "待审队列",
+          "aria-live": "polite",
+          "aria-busy": "true",
+        });
+
+        var left = LT.el("aside", { class: "card" }, [
+          LT.el("div", { class: "spread" }, [
+            LT.el("h2", { style: "margin:0", text: "待审队列" }),
+            refreshBtn,
+          ]),
+          LT.el("div", { class: "field", style: "margin:var(--s3) 0 0" }, [
+            LT.el("label", { class: "label", for: "status-filter", text: "状态过滤" }),
+            filter,
+          ]),
+          queue,
+        ]);
+
+        var detail = LT.el("section", { class: "stack", id: "detail", "aria-label": "提交详情" });
+        renderDetailEmpty(detail);
+
+        var layout = LT.el("div", { class: "sidebar-layout" }, [left, detail]);
+        app.appendChild(layout);
+      }
+
+      /* ---------- 队列 ---------- */
+      function loadQueue() {
+        var queue = LT.$("#queue");
+        if (!queue) return;
+        LT.clear(queue);
+        queue.setAttribute("aria-busy", "true");
+        queue.appendChild(LT.skeleton(4));
+
+        LT.get(`/api/admin/submissions?status=${encodeURIComponent(state.status)}`)
+          .then((data) => {
+            var items = (data?.submissions) || [];
+            queue.setAttribute("aria-busy", "false");
+            LT.clear(queue);
+            if (!items.length) {
+              queue.appendChild(
+                LT.emptyState("暂无待审提交", "当贡献者提交符合 Schema 的数据后，会出现在这里。"),
+              );
+              return;
+            }
+            items.forEach((item) => {
+              var when = item.updatedAt || item.createdAt;
+              var btn = LT.el("button", {
+                class: "queue-item",
+                type: "button",
+                dataset: { id: String(item.id) },
+                "aria-pressed": String(item.id) === String(state.id) ? "true" : "false",
+                onclick: () => {
+                  selectSubmission(item.id);
+                },
+              }, [
+                LT.el("span", { style: "display:flex;flex-direction:column;gap:2px;min-width:0" }, [
+                  LT.el("span", { class: "slug truncate", text: item.slug || "（无 slug）" }),
+                  when
+                    ? LT.el("span", {
+                        class: "faint",
+                        style: "font-size:.76rem",
+                        text: LT.fmtDateTime(when),
+                      })
+                    : null,
+                ]),
+                LT.el("span", { html: LT.statusTag(item.status) }),
+              ]);
+              queue.appendChild(btn);
+            });
+          })
+          .catch((e) => {
+            queue.setAttribute("aria-busy", "false");
+            LT.clear(queue);
+            var expired = e && e.status === 401;
+            queue.appendChild(
+              LT.el("div", { class: "callout callout--danger" }, [
+                LT.el("div", {}, [
+                  LT.el("strong", { text: "队列加载失败" }),
+                  LT.el("p", {
+                    class: "muted",
+                    style: "margin:0",
+                    text: expired
+                      ? "登录已失效，请重新登录控制台。"
+                      : (e?.message) || "无法读取待审队列，请稍后重试。",
+                  }),
+                ]),
+              ]),
+            );
+          });
+      }
+
+      function markSelected() {
+        LT.$$("#queue .queue-item").forEach((b) => {
+          b.setAttribute("aria-pressed", b.dataset.id === String(state.id) ? "true" : "false");
+        });
+      }
+
+      function selectSubmission(id) {
+        state.id = id;
+        markSelected();
+        var detail = LT.$("#detail");
+        LT.clear(detail);
+        detail.appendChild(LT.skeleton(6));
+
+        LT.get(`/api/admin/submissions/${encodeURIComponent(id)}`)
+          .then((views) => {
+            renderDetail(detail, views || {});
+          })
+          .catch((e) => {
+            LT.clear(detail);
+            detail.appendChild(
+              LT.el("div", { class: "callout callout--danger" }, [
+                LT.el("div", {}, [
+                  LT.el("strong", { text: "加载提交详情失败" }),
+                  LT.el("p", {
+                    class: "muted",
+                    style: "margin:0",
+                    text: (e?.message) || "请稍后重试。",
+                  }),
+                ]),
+              ]),
+            );
+          });
+      }
+
+      /* ---------- 详情 ---------- */
+      function renderDetailEmpty(mount) {
+        LT.clear(mount);
+        mount.appendChild(
+          LT.emptyState(
+            "未选择提交",
+            "从左侧队列中选择一条待审提交，即可查看结构化渲染、JSON 树与版本差异。",
+          ),
+        );
+      }
+
+      function renderDetail(mount, views) {
+        LT.clear(mount);
+        var s = views.submission || {};
+
+        var meta = LT.el("dl", { class: "kv" });
+        function kv(k, node) {
+          meta.appendChild(LT.el("dt", { text: k }));
+          meta.appendChild(LT.el("dd", {}, node));
+        }
+        kv("提交 ID", LT.el("code", { text: s.id != null ? String(s.id) : "—" }));
+        kv("数据集", LT.el("span", { class: "mono", text: s.slug || "—" }));
+        kv("数据集 ID", LT.el("code", { text: s.datasetId != null ? String(s.datasetId) : "—" }));
+        kv("状态", LT.el("span", { html: LT.statusTag(s.status || "") }));
+        kv("Schema 版本", LT.el("span", { class: "mono", text: s.schemaVersion || "—" }));
+        kv("创建时间", LT.el("span", { text: LT.fmtDateTime(s.createdAt) }));
+        kv(
+          "提交邮箱",
+          LT.el("span", { text: s.hasEmail ? "有（可用于通知贡献者）" : "无" }),
+        );
+
+        var panelMap = {};
+        var order = ["render", "tree", "diff"];
+        var tablist = LT.el("div", { class: "tabs", role: "tablist", "aria-label": "提交视图" });
+        var panels = LT.el("div");
+
+        function selectTab(id) {
+          order.forEach((k) => {
+            var on = k === id;
+            panelMap[k].btn.setAttribute("aria-selected", on ? "true" : "false");
+            panelMap[k].btn.setAttribute("tabindex", on ? "0" : "-1");
+            panelMap[k].panel.hidden = !on;
+          });
+        }
+
+        [
+          { id: "render", label: "结构化渲染" },
+          { id: "tree", label: "JSON 树" },
+          { id: "diff", label: "与当前版本差异" },
+        ].forEach((t, i) => {
+          var btn = LT.el("button", {
+            type: "button",
+            role: "tab",
+            id: `tab-${t.id}`,
+            "aria-selected": i === 0 ? "true" : "false",
+            "aria-controls": `panel-${t.id}`,
+            tabindex: i === 0 ? "0" : "-1",
+            text: t.label,
+          });
+          var panel = LT.el("div", {
+            role: "tabpanel",
+            id: `panel-${t.id}`,
+            "aria-labelledby": `tab-${t.id}`,
+            hidden: i !== 0,
+            tabindex: "0",
+          });
+          btn.addEventListener("click", () => {
+            selectTab(t.id);
+          });
+          panelMap[t.id] = { btn: btn, panel: panel };
+          tablist.appendChild(btn);
+          panels.appendChild(panel);
+        });
+
+        var renderFields = views.render || [];
+        if (renderFields.length) {
+          panelMap.render.panel.appendChild(LT.renderFields(renderFields));
+        } else {
+          panelMap.render.panel.appendChild(
+            LT.el("p", { class: "muted", text: "无可渲染字段（Schema 可能尚未提供展示信息）。" }),
+          );
+        }
+
+        if (views.jsonTree !== undefined && views.jsonTree !== null) {
+          panelMap.tree.panel.appendChild(LT.jsonTree(views.jsonTree));
+        } else {
+          panelMap.tree.panel.appendChild(
+            LT.el("p", { class: "muted", text: "该提交暂无可展示的 JSON 内容。" }),
+          );
+        }
+
+        panelMap.diff.panel.appendChild(
+          LT.el("p", { class: "muted" }, [
+            "对比基准：",
+            LT.el("code", { text: views.diffBase || "latest-published" }),
+          ]),
+        );
+        panelMap.diff.panel.appendChild(LT.diffView(views.diff));
+
+        var reasonInput = LT.el("input", {
+          class: "input",
+          id: "reject-reason",
+          type: "text",
+          autocomplete: "off",
+          placeholder: "说明驳回原因（驳回时必填）",
+        });
+
+        var stageBtn = LT.el("button", { class: "btn", type: "button", text: "预发布" });
+        var promoteBtn = LT.el("button", {
+          class: "btn btn--primary",
+          type: "button",
+          text: "正式发布",
+        });
+        var rejectBtn = LT.el("button", {
+          class: "btn btn--danger",
+          type: "button",
+          text: "驳回",
+        });
+
+        stageBtn.addEventListener("click", () => {
+          doAction(stageBtn, "预发布", "/stage", {});
+        });
+        promoteBtn.addEventListener("click", () => {
+          LT.confirmDialog({
+            title: "正式发布该提交？",
+            message: "将把该提交的内容作为一个新的不可变数据快照发布，公开读取方会立即看到。发布后不可修改。",
+            confirmLabel: "确认发布",
+            danger: true,
+          }).then((ok) => {
+            if (ok) doAction(promoteBtn, "正式发布", "/promote", {});
+          });
+        });
+        rejectBtn.addEventListener("click", () => {
+          var reason = (reasonInput.value || "").trim();
+          if (!reason) {
+            LT.toast("请先填写驳回原因", { type: "warn" });
+            reasonInput.focus();
+            return;
+          }
+          LT.confirmDialog({
+            title: "驳回该提交？",
+            message: `将以给定原因驳回提交，贡献者可凭追踪令牌看到该原因。驳回原因：${reason}`,
+            confirmLabel: "确认驳回",
+            danger: true,
+          }).then((ok) => {
+            if (ok) doAction(rejectBtn, "驳回", "/reject", { reason: reason });
+          });
+        });
+
+        var head = LT.el("div", { class: "card__head" }, [
+          LT.el("h2", { text: "提交详情" }),
+          LT.el("span", { html: LT.statusTag(s.status || "") }),
+        ]);
+        var body = LT.el("div", { class: "card__body stack-lg" }, [
+          meta,
+          LT.el("div", {}, [tablist, panels]),
+        ]);
+        var foot = LT.el("div", { class: "card__foot stack" }, [
+          LT.el("div", { class: "field", style: "margin:0" }, [
+            LT.el("label", { class: "label", for: "reject-reason", text: "驳回原因（驳回时必填）" }),
+            reasonInput,
+            LT.el("p", {
+              class: "hint",
+              text: "预发布为内部预览，可随时继续操作；正式发布与驳回不可撤销，均会记录到审计。",
+            }),
+          ]),
+          LT.el("div", { class: "cluster" }, [stageBtn, promoteBtn, rejectBtn]),
+        ]);
+
+        mount.appendChild(LT.el("div", { class: "card" }, [head, body, foot]));
+      }
+
+      function doAction(btn, label, path, payload) {
+        if (!state.id) {
+          LT.toast("请先选择一条提交", { type: "warn" });
           return;
         }
-        queue.textContent = "";
-        for (const item of submissions) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "queue-item";
-          btn.innerHTML =
-            `<span class="queue-slug">${item.slug}</span>` +
-            `<span class="pill">${item.status}</span>`;
-          btn.onclick = () => selectSubmission(item.id);
-          queue.appendChild(btn);
-        }
-      } catch (e) {
-        queue.textContent = `加载失败：${e.message}`;
+        LT.busy(btn, true);
+        LT.post(`/api/admin/submissions/${encodeURIComponent(state.id)}${path}`, payload)
+          .then(() => {
+            LT.toast(`${label}成功`, { type: "ok" });
+            loadQueue();
+            selectSubmission(state.id);
+          })
+          .catch((e) => {
+            LT.toast(`${label}失败：${(e?.message) || "请稍后重试"}`, { type: "error" });
+          })
+          .finally(() => {
+            LT.busy(btn, false);
+          });
       }
-    };
 
-    const renderTreeNode = (value) => {
-      if (value === null) return document.createTextNode("null");
-      if (Array.isArray(value)) {
-        const details = document.createElement("details");
-        details.open = true;
-        const summary = document.createElement("summary");
-        summary.textContent = `Array(${value.length})`;
-        details.appendChild(summary);
-        value.forEach((item, i) => {
-          details.appendChild(treeRow(`[${i}]`, renderTreeNode(item)));
+      /* ---------- 启动 ---------- */
+      LT.get("/api/admin/session")
+        .then(() => {
+          buildApp();
+          loadQueue();
+        })
+        .catch(() => {
+          showGate();
         });
-        return details;
-      }
-      if (typeof value === "object") {
-        const keys = Object.keys(value);
-        const details = document.createElement("details");
-        details.open = true;
-        const summary = document.createElement("summary");
-        summary.textContent = `Object(${keys.length})`;
-        details.appendChild(summary);
-        for (const k of keys) {
-          details.appendChild(treeRow(k, renderTreeNode(value[k])));
-        }
-        return details;
-      }
-      const span = document.createElement("span");
-      span.className = "tree-val";
-      span.textContent = typeof value === "string" ? `"${value}"` : String(value);
-      return span;
-    };
-
-    const treeRow = (key, node) => {
-      const row = document.createElement("div");
-      row.className = "tree-row";
-      const k = document.createElement("span");
-      k.className = "tree-key";
-      k.textContent = key;
-      row.appendChild(k);
-      row.appendChild(node);
-      return row;
-    };
-
-    const renderFieldNode = (field) => {
-      const wrap = document.createElement("div");
-      wrap.className = "render-field";
-      const label = document.createElement("div");
-      label.className = "render-label";
-      label.innerHTML =
-        `<span class="render-key">${field.key}</span>` +
-        `<span class="render-title">${field.title}</span>` +
-        `<span class="pill">${field.type}</span>`;
-      wrap.appendChild(label);
-      if (field.children) {
-        const kids = document.createElement("div");
-        kids.className = "render-children";
-        for (const child of field.children) kids.appendChild(renderFieldNode(child));
-        wrap.appendChild(kids);
-      } else {
-        const val = document.createElement("div");
-        val.className = "render-value";
-        val.textContent =
-          typeof field.value === "string" ? field.value : JSON.stringify(field.value);
-        wrap.appendChild(val);
-      }
-      return wrap;
-    };
-
-    const renderDiff = (entry) => {
-      const row = document.createElement("div");
-      row.className = `diff-row diff-${entry.kind}`;
-      const head = document.createElement("div");
-      head.className = "diff-head";
-      head.innerHTML = `<span class="pill">${entry.kind}</span><code>${entry.path || "/"}</code>`;
-      row.appendChild(head);
-      const body = document.createElement("div");
-      body.className = "diff-body";
-      const fmt = (v) => (v === undefined ? "—" : JSON.stringify(v));
-      body.textContent = `before: ${fmt(entry.before)} ⇒ after: ${fmt(entry.after)}`;
-      row.appendChild(body);
-      return row;
-    };
-
-    const renderDetail = (views) => {
-      $("detail-empty").style.display = "none";
-      $("detail").style.display = "";
-
-      const s = views.submission;
-      $("meta").innerHTML = `
-        <div><span class="meta-k">id</span><span class="meta-v">${s.id}</span></div>
-        <div><span class="meta-k">slug</span><span class="meta-v">${s.slug}</span></div>
-        <div><span class="meta-k">datasetId</span><span class="meta-v">${s.datasetId}</span></div>
-        <div><span class="meta-k">status</span><span class="meta-v"><span class="pill">${s.status}</span></span></div>
-        <div><span class="meta-k">schemaVersion</span><span class="meta-v">${s.schemaVersion}</span></div>
-        <div><span class="meta-k">createdAt</span><span class="meta-v">${s.createdAt}</span></div>
-        <div><span class="meta-k">hasEmail</span><span class="meta-v">${s.hasEmail}</span></div>`;
-
-      const renderView = $("render-view");
-      renderView.textContent = "";
-      for (const field of views.render || []) renderView.appendChild(renderFieldNode(field));
-
-      const tree = $("json-tree");
-      tree.textContent = "";
-      tree.appendChild(renderTreeNode(views.jsonTree));
-
-      $("diff-base").textContent = views.diffBase || "-";
-      const diffView = $("diff-view");
-      diffView.textContent = "";
-      if (!views.diff || views.diff.length === 0) {
-        diffView.textContent = "（与当前版本无差异）";
-      } else {
-        for (const entry of views.diff) diffView.appendChild(renderDiff(entry));
-      }
-    };
-
-    const selectSubmission = async (id) => {
-      currentId = id;
-      try {
-        const views = await api(`${API}/submissions/${id}`);
-        renderDetail(views);
-      } catch (e) {
-        showOut("加载三视图失败", String(e.message ?? e));
-      }
-    };
-
-    const afterAction = async (label, promise) => {
-      try {
-        const result = await promise;
-        showOut(label, result);
-        await loadQueue();
-        if (currentId) await selectSubmission(currentId);
-      } catch (e) {
-        showOut(`${label}失败`, String(e.message ?? e));
-      }
-    };
-
-    $("refresh-btn").onclick = () => loadQueue();
-
-    $("stage-btn").onclick = () => {
-      if (!currentId) return showOut("预发布失败", "请先选择提交");
-      afterAction("预发布结果", post(`${API}/submissions/${currentId}/stage`));
-    };
-
-    $("promote-btn").onclick = () => {
-      if (!currentId) return showOut("正式发布失败", "请先选择提交");
-      afterAction("正式发布结果", post(`${API}/submissions/${currentId}/promote`));
-    };
-
-    $("reject-btn").onclick = () => {
-      if (!currentId) return showOut("驳回失败", "请先选择提交");
-      const reason = $("reject-reason").value.trim();
-      afterAction("驳回结果", post(`${API}/submissions/${currentId}/reject`, { reason }));
-    };
-
-    loadQueue().catch((e) => showOut("初始化失败", String(e.message ?? e)));
+    })();
   </script>
-
-  <style>
-    .review-grid {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 16px;
-      align-items: start;
-    }
-    @media (max-width: 860px) {
-      .review-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    .queue {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .queue-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin: 0;
-      background: #fff;
-      color: var(--ink);
-      border: 1px solid var(--rule);
-      font-weight: 500;
-      text-align: left;
-    }
-    .queue-item:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-    .queue-slug {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-    }
-    .meta {
-      font-size: 0.88rem;
-    }
-    .meta > div {
-      display: flex;
-      gap: 10px;
-      padding: 3px 0;
-      border-bottom: 1px dashed var(--rule);
-    }
-    .meta-k {
-      width: 120px;
-      color: var(--muted);
-    }
-    .meta-v {
-      word-break: break-all;
-    }
-    .render-field {
-      border-left: 2px solid var(--rule);
-      padding: 2px 0 2px 10px;
-      margin: 4px 0;
-    }
-    .render-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.9rem;
-    }
-    .render-key {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      color: var(--accent);
-    }
-    .render-title {
-      color: var(--ink);
-      font-weight: 600;
-    }
-    .render-children {
-      margin-left: 14px;
-    }
-    .render-value {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-size: 0.82rem;
-      color: var(--muted);
-    }
-    .tree {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-size: 0.82rem;
-      background: #fbfbfe;
-      border: 1px solid var(--rule);
-      border-radius: 8px;
-      padding: 10px 14px;
-      max-height: 360px;
-      overflow: auto;
-    }
-    .tree details {
-      margin-left: 12px;
-    }
-    .tree-row {
-      margin-left: 14px;
-    }
-    .tree-key {
-      color: var(--accent);
-      margin-right: 6px;
-    }
-    .tree-val {
-      color: var(--muted);
-    }
-    .diff-row {
-      border: 1px solid var(--rule);
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin: 6px 0;
-      font-size: 0.85rem;
-    }
-    .diff-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .diff-body {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      color: var(--muted);
-      margin-top: 4px;
-      word-break: break-all;
-    }
-    .diff-added {
-      border-color: rgba(18, 165, 148, 0.4);
-    }
-    .diff-removed {
-      border-color: rgba(180, 38, 31, 0.35);
-    }
-    .diff-changed {
-      border-color: rgba(180, 83, 9, 0.35);
-    }
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    button.danger {
-      background: var(--danger);
-    }
-  </style>
 </body>
 </html>

@@ -41,3 +41,16 @@
   2. 静态资源清单哈希 = `blake3(base64(文件内容)+扩展名).hex.slice(0,32)`（与 wrangler `src/pages/hash.ts` 一致）
   3. `POST /accounts/{id}/workers/scripts/lantai-test/assets-upload-session` 建会话 → 用返回的会话 JWT `POST /accounts/{id}/workers/assets/upload?base64=true` 上传资源（需带 `Authorization: Bearer <jwt>`，用 curl）
   4. `PUT /accounts/{id}/workers/scripts/lantai-test` multipart 上传脚本：metadata = `main_module` + `bindings`（d1 / r2_bucket / assets / plain_text）+ `assets{jwt,config:{run_worker_first}}` + `compatibility_flags:["nodejs_compat"]`
+  - 静态资源哈希算法（务必与 wrangler 一致）：`blake3(base64(文件内容) + 扩展名).hex.slice(0,32)`（`blake3-wasm`）。
+  - 本地打包输出到 `/tmp/dist-test`（勿留在仓库；`dist/`、`dist-test/` 已在 .gitignore）。
+
+## 前端架构（UI/UX 重构后）
+
+- 纯静态、无构建、无框架：`public/styles.css`（设计系统）+ `public/app.js`（`window.LT` 运行时）+ 各页手写 HTML。
+- 页面外壳统一：`skip-link` → `header.topbar[data-lt-topbar]` → `main#main[tabindex=-1]` → `footer.sitefoot[data-lt-footer]`，先 `LT.mountShell({active})` 再渲染内容；控制台页在 `<main>` 内用 `.console` + `nav.sidenav[data-lt-sidenav]`。
+- 页面：`index.html`(数据目录) / `dataset.html`(?slug=) / `search.html` / `submit.html` / `status.html` / `admin.html`(编目) / `review.html` / `ops.html` / `docs/*.html`。
+- 关键约定写在全量契约 `.uicraft.md`（设计方向、token/类名、`LT.*` API、接口形状、逐页规格、无障碍要求）。**改动前端必须遵守它**。
+- 设计方向：档案/典籍馆式编辑型界面；主色靛青、点缀朱砂、成功松绿；支持亮/暗色与 `prefers-reduced-motion`。
+- 新增后端接口：`GET /api/admin/session` → `{ actor }`（前端登录态）；`GET /api/submissions/:token` 增加 `schemaVersion` 与 `rejectReason`。
+- 质量门禁：`npm run lint`（biome，0 error）、`npm run typecheck`、`npm test` 全绿。`public/docs` 不参与 biome。
+- 浏览器验证：Playwright（headless chromium，`--no-sandbox`，经代理）逐页检查外壳/单 h1/控制台无报错/JSON 编辑器对齐。

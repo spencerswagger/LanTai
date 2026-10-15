@@ -3,56 +3,229 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LanTai 兰台 · 公开数据目录</title>
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <title>公开数据目录 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    #catalog .card__head .searchbar { width: min(320px, 56vw); }
+    #catalog-filter { width: 100%; }
+  </style>
 </head>
 <body>
-  <div class="wrap">
-    <nav class="nav">
-      <a href="/" class="active">目录</a>
-      <a href="/search">搜索</a>
-      <a href="/index.json">index.json</a>
-      <a href="/admin">管理后台</a>
-    </nav>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar" data-lt-topbar></header>
 
-    <header class="top">
-      <p class="eyebrow">LanTai · 兰台</p>
-      <h1>公开数据发布与共享平台</h1>
-      <p class="lede">
-        兰台，取自《汉书·百官公卿表》，喻数据典藏之机构。本平台以不可变 JSON Schema 编目、
-        以数据集级不可变快照发布，任何人可匿名贡献，管理员审阅后合并发布。
-      </p>
-    </header>
+  <main id="main" tabindex="-1">
+    <div class="container stack-lg">
+      <section class="hero">
+        <p class="eyebrow">公开数据 · 不可变快照</p>
+        <h1>公开数据目录</h1>
+        <p class="hero__lede">
+          兰台以不可变的 JSON Schema 编目公开数据集：任何人都可匿名贡献数据，
+          经管理员审阅后以不可变快照发布。读取完全走静态发布物，零计算、可缓存。
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#catalog">浏览目录</a>
+          <a class="btn" href="/submit">提交数据</a>
+          <a class="btn btn--ghost" href="/docs/">开放接口</a>
+        </div>
 
-    <section class="card">
-      <h2 style="margin-top:0">数据目录</h2>
-      <p class="note">目录索引为静态文件 <code>/index.json</code>，读取完全绕开 Worker。</p>
-      <table>
-        <thead><tr><th>slug</th><th>标题</th><th>当前 Schema</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="3">加载中…</td></tr></tbody>
-      </table>
-    </section>
+        <div class="howto">
+          <div class="howto__item">
+            <div class="howto__num">01</div>
+            <h3>浏览与取用</h3>
+            <p class="muted">在数据目录里查看已发布的数据集，按它冻结的 Schema 消费静态 JSON 快照。</p>
+            <p><a href="#catalog">浏览数据目录 →</a></p>
+          </div>
+          <div class="howto__item">
+            <div class="howto__num">02</div>
+            <h3>匿名提交数据</h3>
+            <p class="muted">选择数据集，粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交，无需账号。</p>
+            <p><a href="/submit">提交数据 →</a></p>
+          </div>
+          <div class="howto__item">
+            <div class="howto__num">03</div>
+            <h3>管理员审阅发布</h3>
+            <p class="muted">管理员在控制台审阅提交，确认无误后发布为不可变快照并更新数据目录。</p>
+            <p><a href="/docs/operator.html">了解运营流程 →</a></p>
+          </div>
+        </div>
+      </section>
 
-    <footer>LanTai 兰台 · 数据典藏机构 · Cloudflare 免费额度 · 读取零计算</footer>
-  </div>
+      <section id="catalog" aria-labelledby="catalog-title">
+        <div class="card card--flush">
+          <div class="card__head">
+            <h2 id="catalog-title">数据目录</h2>
+            <div class="searchbar">
+              <label class="sr-only" for="catalog-filter">按 slug 或标题筛选数据集</label>
+              <input id="catalog-filter" class="input" type="search" placeholder="按 slug 或标题筛选…" autocomplete="off" />
+            </div>
+          </div>
+          <div id="catalog-body" role="status" aria-live="polite"></div>
+        </div>
+      </section>
 
+      <section class="card" aria-labelledby="catalog-note-title">
+        <h2 id="catalog-note-title" style="margin-top:0">数据目录从何而来</h2>
+        <p class="muted">
+          数据目录是一份机器可读的静态索引 <code>/index.json</code>，逐条列出每个数据集的 slug、标题、
+          当前 Schema 版本与更新时间。它由 CDN 直读、不经计算，程序可直接取用。
+        </p>
+        <p><a href="/docs/">查看开放接口与字段说明 →</a></p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="sitefoot" data-lt-footer></footer>
+
+  <script src="/app.js"></script>
   <script>
-    fetch("/index.json")
-      .then((r) => (r.ok ? r.json() : { datasets: [] }))
-      .then((catalog) => {
-        const rows = (catalog.datasets || [])
-          .map(
-            (d) =>
-              `<tr><td><a href="/${d.slug}/manifest.json">${d.slug}</a></td><td>${d.title}</td><td><span class="pill frozen">${d.currentSchemaVersion ?? "-"}</span></td></tr>`,
-          )
-          .join("");
-        document.getElementById("rows").innerHTML =
-          rows || '<tr><td colspan="3">暂无已发布数据集</td></tr>';
-      })
-      .catch(() => {
-        document.getElementById("rows").innerHTML =
-          '<tr><td colspan="3">目录索引暂不可用</td></tr>';
-      });
+    (() => {
+      "use strict";
+      LT.mountShell({ active: "catalog" });
+
+      var bodyEl = LT.$("#catalog-body");
+      var filterEl = LT.$("#catalog-filter");
+      var datasets = [];
+      var state = "loading";
+
+      function renderSkeleton() {
+        state = "loading";
+        filterEl.disabled = true;
+        LT.clear(bodyEl);
+        bodyEl.appendChild(LT.el("div", { class: "card__body" }, [LT.skeleton(5)]));
+      }
+
+      function renderError() {
+        state = "error";
+        filterEl.disabled = true;
+        LT.clear(bodyEl);
+        bodyEl.appendChild(
+          LT.el("div", { class: "card__body" }, [
+            LT.emptyState(
+              "数据目录暂不可用",
+              "无法读取 /index.json，可能是网络问题或发布物尚未生成。",
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "重试",
+                onclick: load,
+              }),
+            ),
+          ]),
+        );
+      }
+
+      function schemaTag(version) {
+        return LT.el("span", {
+          class: "tag tag--frozen tag--plain mono",
+          text: version ? `Schema ${version}` : "Schema —",
+        });
+      }
+
+      function buildTable(list) {
+        var tbody = LT.el("tbody");
+        list.forEach((d) => {
+          tbody.appendChild(
+            LT.el("tr", {}, [
+              LT.el("td", {}, [
+                LT.el("a", { class: "mono", href: LT.datasetLink(d.slug), text: d.slug }),
+              ]),
+              LT.el("td", { text: d.title || "—" }),
+              LT.el("td", {}, [schemaTag(d.currentSchemaVersion)]),
+              LT.el("td", {}, [
+                d.currentDataVersion
+                  ? LT.el("span", { class: "tag tag--published", text: "已发布" })
+                  : LT.el("span", { class: "tag tag--frozen", text: "已编目" }),
+                LT.el("div", { class: "faint", text: LT.fmtDateTime(d.updatedAt) }),
+              ]),
+            ]),
+          );
+        });
+        var head = LT.el("thead", {}, [
+          LT.el("tr", {}, [
+            LT.el("th", { scope: "col", text: "数据集" }),
+            LT.el("th", { scope: "col", text: "标题" }),
+            LT.el("th", { scope: "col", text: "当前 Schema" }),
+            LT.el("th", { scope: "col", text: "状态 / 更新时间" }),
+          ]),
+        ]);
+        var table = LT.el("table", { class: "table" }, [head, tbody]);
+        return LT.el("div", { class: "table-wrap" }, [table]);
+      }
+
+      function renderReady() {
+        state = "ready";
+        filterEl.disabled = false;
+        var q = (filterEl.value || "").trim().toLowerCase();
+        var list = !q
+          ? datasets
+          : datasets.filter((d) => (
+                String(d.slug || "").toLowerCase().indexOf(q) !== -1 ||
+                String(d.title || "").toLowerCase().indexOf(q) !== -1
+              ));
+
+        LT.clear(bodyEl);
+
+        if (datasets.length === 0) {
+          bodyEl.appendChild(
+            LT.el("div", { class: "card__body" }, [
+              LT.emptyState(
+                "还没有已发布数据集",
+                "管理员在控制台完成编目、审阅与发布后，数据集会出现在这里。",
+                LT.el("a", { class: "btn btn--sm", href: "/admin", text: "去后台编目" }),
+              ),
+            ]),
+          );
+          return;
+        }
+
+        if (list.length === 0) {
+          bodyEl.appendChild(
+            LT.el("div", { class: "card__body" }, [
+              LT.emptyState(
+                "没有匹配的数据集",
+                `没有 slug 或标题包含「${filterEl.value.trim()}」的数据集。`,
+                LT.el("button", {
+                  class: "btn btn--sm",
+                  type: "button",
+                  text: "清空筛选",
+                  onclick: () => {
+                    filterEl.value = "";
+                    renderReady();
+                    filterEl.focus();
+                  },
+                }),
+              ),
+            ]),
+          );
+          return;
+        }
+
+        bodyEl.appendChild(buildTable(list));
+      }
+
+      function load() {
+        renderSkeleton();
+        LT.get("/index.json")
+          .then((catalog) => {
+            datasets = (catalog?.datasets) || [];
+            datasets = datasets.slice().sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+            renderReady();
+          })
+          .catch(renderError);
+      }
+
+      filterEl.addEventListener(
+        "input",
+        LT.debounce(() => {
+          if (state === "ready") renderReady();
+        }, 120),
+      );
+
+      load();
+    })();
   </script>
 </body>
 </html>
