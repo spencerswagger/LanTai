@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { NotFoundError } from "../lib/errors";
 import { nowIso } from "../lib/ids";
 
 export interface SubmissionRow {
@@ -12,6 +13,10 @@ export interface SubmissionRow {
   contact_email: string | null;
   source_ip_hash: string | null;
   staged_version: string | null;
+  reject_reason: string | null;
+  reviewed_by: string | null;
+  staged_at: string | null;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,6 +61,28 @@ export async function getSubmissionByToken(env: Env, token: string): Promise<Sub
   return env.DB.prepare("SELECT * FROM submission WHERE token = ?")
     .bind(token)
     .first<SubmissionRow>();
+}
+
+export async function getSubmissionById(env: Env, id: string): Promise<SubmissionRow> {
+  const row = await env.DB.prepare("SELECT * FROM submission WHERE id = ?")
+    .bind(id)
+    .first<SubmissionRow>();
+  if (!row) throw new NotFoundError("submission_not_found", `提交记录不存在：${id}`);
+  return row;
+}
+
+/**
+ * 按状态列表拉取提交，供后台审阅队列使用。按创建时间倒序（最新在前）。
+ */
+export async function listSubmissions(env: Env, statuses: string[]): Promise<SubmissionRow[]> {
+  if (statuses.length === 0) return [];
+  const placeholders = statuses.map(() => "?").join(", ");
+  const result = await env.DB.prepare(
+    `SELECT * FROM submission WHERE status IN (${placeholders}) ORDER BY created_at DESC`,
+  )
+    .bind(...statuses)
+    .all<SubmissionRow>();
+  return result.results ?? [];
 }
 
 export async function updateSubmissionStatus(
