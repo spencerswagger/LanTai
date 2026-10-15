@@ -1,5 +1,4 @@
-docs/
-!public/docs/
+/docs/
 node_modules/
 .wrangler/
 dist/
