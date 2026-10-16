@@ -26,7 +26,7 @@ export interface GlobalSearchIndex {
 }
 
 /** 单数据集索引的规模上限，避免极端数据量下索引失控。 */
-const MAX_TERMS = 2000;
+const MAX_TERMS = 10000;
 const MAX_TERM_LENGTH = 500;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -36,34 +36,43 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * 递归收集快照中的可检索文本：字符串原样收录，数字转字符串；
- * 去重并按总项数 / 单项长度设上限。null / boolean / 空串跳过。
+ * 递归收集快照中的可检索文本，分两阶段以优先保障名称类字符串：
+ *  - 阶段一：收集全部字符串 term（trim、去重、单条≤MAX_TERM_LENGTH），保证深层 name 不被挤掉；
+ *  - 阶段二：预算（MAX_TERMS）尚有余额时再收数字，避免 id / level 等数字占满条目。
+ * null / boolean / 空串跳过。
  */
-function collectTerms(value: unknown, out: Set<string>): void {
-  if (out.size >= MAX_TERMS) return;
+export function collectTerms(value: unknown, out: Set<string>): void {
+  const numbers = new Set<string>();
+  collectStringTerms(value, out, numbers);
+  for (const number of numbers) {
+    if (out.size >= MAX_TERMS) break;
+    out.add(number);
+  }
+}
+
+/** 阶段一：收集字符串；同时把数字暂存到 numbers，留待阶段二按剩余预算补录。 */
+function collectStringTerms(value: unknown, out: Set<string>, numbers: Set<string>): void {
   if (typeof value === "string") {
     const text = value.trim();
-    if (text !== "") {
+    if (text !== "" && out.size < MAX_TERMS) {
       out.add(text.length > MAX_TERM_LENGTH ? text.slice(0, MAX_TERM_LENGTH) : text);
     }
     return;
   }
   if (typeof value === "number" && Number.isFinite(value)) {
-    out.add(String(value));
+    numbers.add(String(value));
     return;
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectTerms(item, out);
-      if (out.size >= MAX_TERMS) return;
+      collectStringTerms(item, out, numbers);
     }
     return;
   }
   const record = asRecord(value);
   if (record) {
     for (const key of Object.keys(record)) {
-      collectTerms(record[key], out);
-      if (out.size >= MAX_TERMS) return;
+      collectStringTerms(record[key], out, numbers);
     }
   }
 }
@@ -71,11 +80,13 @@ function collectTerms(value: unknown, out: Set<string>): void {
 /**
  * 从冻结 Schema 提取字段元数据（仅字段名/标题/类型；数据值由 collectTerms 另行索引）。
  * 对象型数据集取根 `properties`；列表型数据集（根为 array）取 `items.properties`。
+ * 支持本地 `$ref`（形如 `#/$defs/node`、`#/definitions/node`）：根为 array 时解析 `items.$ref`，
+ * 否则解析根 `$ref`，仅解析一跳后取其 `properties`；解析不到返回空数组。
  */
-function fieldsFromSchema(schemaJson: string): SearchField[] {
+export function fieldsFromSchema(schemaJson: string): SearchField[] {
   const root = asRecord(JSON.parse(schemaJson));
   if (!root) return [];
-  const container = root.type === "array" ? asRecord(root.items) : root;
+  const container = resolveSchemaContainer(root);
   const properties = container ? asRecord(container.properties) : null;
   if (!properties) return [];
   return Object.keys(properties).map((name) => {
@@ -84,6 +95,41 @@ function fieldsFromSchema(schemaJson: string): SearchField[] {
     const type = prop && typeof prop.type === "string" ? prop.type : null;
     return { name, title, type };
   });
+}
+
+/**
+ * 定位承载 `properties` 的 Schema 节点：根为 array 时取 `items`（`items.$ref` 则解析）；
+ * 否则根若为 `$ref` 亦解析。仅解析一跳，避免节点内 `children` 等自引用造成循环。
+ */
+function resolveSchemaContainer(root: Record<string, unknown>): Record<string, unknown> | null {
+  if (root.type === "array") {
+    const items = asRecord(root.items);
+    if (!items) return null;
+    return typeof items.$ref === "string" ? resolveLocalRef(root, items.$ref) : items;
+  }
+  if (typeof root.$ref === "string") {
+    return resolveLocalRef(root, root.$ref);
+  }
+  return root;
+}
+
+/**
+ * 解析文档内的本地 JSON Pointer 引用（`#/$defs/node`、`#/definitions/node`）。
+ * 非本地引用或路径不存在时返回 null。
+ */
+function resolveLocalRef(
+  root: Record<string, unknown>,
+  ref: string,
+): Record<string, unknown> | null {
+  if (!ref.startsWith("#/")) return null;
+  let current: unknown = root;
+  for (const segment of ref.slice(2).split("/")) {
+    const node = asRecord(current);
+    if (!node) return null;
+    const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+    current = node[key];
+  }
+  return asRecord(current);
 }
 
 /**

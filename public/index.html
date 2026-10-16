@@ -91,11 +91,30 @@
       if (i < 0) return e;
       return `${e.slice(0, i)}<span class="hl">${e.slice(i, i + term.length)}</span>${e.slice(i + term.length)}`;
     }
+    function jsonFull(v) {
+      try { return JSON.stringify(v); } catch { return String(v); }
+    }
     function jsonPreview(v) {
-      let s;
-      try { s = JSON.stringify(v); } catch { s = String(v); }
+      const s = jsonFull(v);
       if (s == null) return "";
       return s.length > 120 ? `${s.slice(0, 120)}…` : s;
+    }
+    function isPlainValueArray(v) {
+      return Array.isArray(v) && v.every((x) => x === null || typeof x !== "object");
+    }
+    function arrayText(arr) {
+      if (!arr.length) return "—";
+      return arr.map((x) => (x == null ? "—" : String(x))).join("、");
+    }
+    function fillCell(td, v, term) {
+      if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); return; }
+      if (v !== null && typeof v === "object") {
+        td.innerHTML = esc(isPlainValueArray(v) ? arrayText(v) : jsonPreview(v));
+        const full = jsonFull(v);
+        if (full) td.setAttribute("title", full);
+        return;
+      }
+      td.innerHTML = mark(v == null ? "" : v, term);
     }
     function nameText(d) { return `${d.slug} ${d.title || ""}`; }
     function fieldsText(d) { return (d.fields || []).map((f) => `${f.name} ${f.title || ""} ${f.type || ""}`).join(" "); }
@@ -159,9 +178,7 @@
           keys.forEach((k) => {
             const td = document.createElement("td");
             const v = row ? row[k] : "";
-            if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); }
-            else if (v !== null && typeof v === "object") td.innerHTML = esc(jsonPreview(v));
-            else td.innerHTML = mark(v == null ? "" : v, term);
+            fillCell(td, v, term);
             tr.appendChild(td);
           });
           tb.appendChild(tr);
@@ -174,8 +191,7 @@
           const th = document.createElement("th"); th.scope = "row"; th.textContent = titleOf[k] || k;
           const td = document.createElement("td");
           const v = data ? data[k] : "";
-          if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); }
-          else td.innerHTML = mark(v == null ? "" : v, term);
+          fillCell(td, v, term);
           tr.appendChild(th); tr.appendChild(td); tb2.appendChild(tr);
         });
         t.appendChild(tb2);

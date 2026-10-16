@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { collectTerms, fieldsFromSchema } from "../src/ops/search-index";
 import { callApp, json, postJson } from "./helpers";
 
 const schema = {
@@ -63,5 +64,41 @@ describe("search index", () => {
     const doc = await json<SearchDoc>(res);
     expect(doc.terms).toEqual(expect.arrayContaining(["bob", "42", "北京", "上海", "广州"]));
     expect(doc.terms.every((t) => typeof t === "string")).toBe(true);
+  });
+});
+
+describe("search index internals", () => {
+  it("resolves a recursive local $ref schema into searchable fields", () => {
+    const refSchema = {
+      type: "array",
+      items: { $ref: "#/$defs/node" },
+      $defs: {
+        node: {
+          type: "object",
+          properties: {
+            id: { type: "integer", title: "编号" },
+            name: { type: "string", title: "名称" },
+            level: { type: "integer" },
+            children: { type: "array", items: { $ref: "#/$defs/node" } },
+          },
+        },
+      },
+    };
+
+    const fields = fieldsFromSchema(JSON.stringify(refSchema));
+    expect(fields.map((f) => f.name)).toEqual(["id", "name", "level", "children"]);
+    expect(fields[1]).toEqual({ name: "name", title: "名称", type: "string" });
+  });
+
+  it("keeps deep string names in terms despite thousands of numeric fields", () => {
+    const rows = Array.from({ length: 3000 }, (_, i) => ({ id: i, level: 3 }));
+    const snapshot = { rows, meta: { deep: { deeper: { name: "深层机密名称" } } } };
+
+    const terms = new Set<string>();
+    collectTerms(snapshot, terms);
+
+    // 旧实现会在遍历 rows 时被 6000 个数字占满 2000 预算，根本到不了 meta 就中断。
+    expect(terms.has("深层机密名称")).toBe(true);
+    expect(terms.has("2999")).toBe(true);
   });
 });
