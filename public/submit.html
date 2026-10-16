@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#080a0f" />
-  <title>提交数据 · 兰台 LanTai</title>
+  <title>贡献数据 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -15,13 +15,15 @@
     <div class="container stack-lg">
       <header class="pagehead">
         <p class="eyebrow">贡献</p>
-        <h1>匿名提交数据</h1>
+        <h1>贡献数据</h1>
         <p class="lede">
-          选择数据集，粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交。提交只写入待审记录，
+          选择数据集，粘贴符合其冻结 Schema 的 JSON 内容即可匿名贡献。提交只写入待审记录，
           管理员审阅发布后才会对外生效；完成后会获得一枚追踪令牌，凭它可随时查询进度。
         </p>
       </header>
 
+      <div class="sidebar-layout sidebar-layout--right">
+      <div class="doc-main">
       <section class="card">
         <div class="card__body stack">
           <div id="steps-mount"></div>
@@ -65,10 +67,6 @@
             <p class="hint" id="email-hint">填写后，状态变更时你会收到通知邮件；不填也可，凭追踪令牌查询。</p>
           </div>
 
-          <div class="callout callout--info" id="turnstile-off" style="display:none">
-            未配置人机校验，提交将直接放行（本地 / 开发态）。
-          </div>
-
           <div class="field" id="turnstile-wrap" style="display:none">
             <span class="label">人机校验</span>
             <div id="turnstile"></div>
@@ -76,24 +74,40 @@
 
           <div class="cluster">
             <button type="button" class="btn btn--primary" id="submit-btn">提交数据</button>
-            <a class="btn btn--ghost btn--sm" href="/docs/contributor.html">贡献者说明</a>
           </div>
 
           <div id="submit-result" role="status" aria-live="polite"></div>
         </div>
       </section>
+      </div>
 
-      <section class="card">
-        <div class="card__head">
-          <h2>查询提交状态</h2>
-        </div>
-        <div class="card__body stack">
-          <p class="muted">提交成功后会获得一枚追踪令牌。凭令牌可随时查询审阅进度，无需登录。</p>
-          <div class="cluster">
-            <a class="btn" href="/status">前往进度查询</a>
+      <aside class="stack">
+        <section class="card">
+          <div class="card__head">
+            <h2>查询提交状态</h2>
           </div>
-        </div>
-      </section>
+          <div class="card__body stack">
+            <p class="muted">提交成功后会获得一枚追踪令牌。凭令牌可随时查询审阅进度，无需登录。</p>
+            <div class="cluster">
+              <a class="btn btn--primary" href="/status">前往进度查询</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__head">
+            <h2>相关</h2>
+          </div>
+          <div class="card__body stack">
+            <p class="muted">了解字段规范与审阅流程，或查看平台开放接口。</p>
+            <div class="cluster">
+              <a class="btn btn--ghost btn--sm" href="/docs/contributor.html">贡献者说明</a>
+              <a class="btn btn--ghost btn--sm" href="/docs/">开放接口</a>
+            </div>
+          </div>
+        </section>
+      </aside>
+      </div>
     </div>
   </main>
 
@@ -117,17 +131,17 @@
         result: document.getElementById("submit-result"),
         submit: document.getElementById("submit-btn"),
         turnstileWrap: document.getElementById("turnstile-wrap"),
-        turnstileOff: document.getElementById("turnstile-off"),
         listMount: document.getElementById("list-mount"),
         modeToggle: document.getElementById("mode-toggle"),
       };
 
-      var stepApi = LT.steps(document.getElementById("steps-mount"), [
-        "选择数据集",
-        "填写内容",
-        "人机校验",
-        "提交完成",
-      ]);
+      var hasCaptcha = !!(window.TURNSTILE_SITE_KEY || "");
+      var stepLabels = hasCaptcha
+        ? ["选择数据集", "填写内容", "人机校验", "提交完成"]
+        : ["选择数据集", "填写内容", "确认提交"];
+      var STEP_SUBMIT = hasCaptcha ? 3 : 2;
+      var STEP_DONE = stepLabels.length;
+      var stepApi = LT.steps(document.getElementById("steps-mount"), stepLabels);
       var curStep = 0;
       stepApi.go(0);
       function setStep(i) {
@@ -574,11 +588,15 @@
 
       function renderHints(slug, ver, schema) {
         LT.clear(els.hints);
+        var container =
+          schema?.type === "array" && schema?.items && typeof schema.items === "object"
+            ? schema.items
+            : schema;
         var props =
-          schema?.properties && typeof schema.properties === "object"
-            ? schema.properties
+          container?.properties && typeof container.properties === "object"
+            ? container.properties
             : null;
-        var required = Array.isArray(schema?.required) ? schema.required : [];
+        var required = Array.isArray(container?.required) ? container.required : [];
 
         var body = LT.el("div", { class: "card__body" });
         if (schema?.description) {
@@ -689,11 +707,9 @@
       function setupTurnstile() {
         var key = window.TURNSTILE_SITE_KEY || "";
         if (!key) {
-          els.turnstileOff.style.display = "";
           els.turnstileWrap.style.display = "none";
           return;
         }
-        els.turnstileOff.style.display = "none";
         els.turnstileWrap.style.display = "";
         loadTurnstileScript().then(() => {
           if (!window.turnstile) return;
@@ -831,11 +847,11 @@
         if (state.turnstileToken) body.turnstileToken = state.turnstileToken;
 
         LT.busy(els.submit, true);
-        setStep(3);
+        setStep(STEP_SUBMIT);
         LT.post("/api/submissions", body)
           .then((res) => {
             LT.busy(els.submit, false);
-            setStep(4);
+            setStep(STEP_DONE);
             renderSuccess(res);
             LT.toast("提交成功", { type: "ok" });
             state.turnstileToken = "";

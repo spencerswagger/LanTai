@@ -98,9 +98,13 @@
         card.appendChild(
           LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "字段说明" })]),
         );
+        var container =
+          schemaDoc?.type === "array" && schemaDoc?.items && typeof schemaDoc.items === "object"
+            ? schemaDoc.items
+            : schemaDoc;
         var props =
-          schemaDoc?.properties && typeof schemaDoc.properties === "object"
-            ? schemaDoc.properties
+          container?.properties && typeof container.properties === "object"
+            ? container.properties
             : null;
         var names = props ? Object.keys(props) : [];
         if (names.length === 0) {
@@ -111,7 +115,7 @@
           );
           return card;
         }
-        var required = Array.isArray(schemaDoc.required) ? schemaDoc.required : [];
+        var required = Array.isArray(container.required) ? container.required : [];
         var tbody = LT.el("tbody");
         names.forEach((name) => {
           var p = props[name] && typeof props[name] === "object" ? props[name] : {};

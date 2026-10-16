@@ -11,7 +11,7 @@
 (() => {
   const PUBLIC_NAV = [
     { id: "catalog", href: "/", label: "开始使用" },
-    { id: "submit", href: "/submit", label: "贡献" },
+    { id: "submit", href: "/submit", label: "贡献数据" },
     { id: "docs", href: "/docs/", label: "文档" },
   ];
   const CONSOLE_NAV = [

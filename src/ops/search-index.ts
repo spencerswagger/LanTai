@@ -69,11 +69,14 @@ function collectTerms(value: unknown, out: Set<string>): void {
 }
 
 /**
- * 从冻结 Schema 的 properties 提取字段元数据（仅字段名/标题/类型；数据值由 collectTerms 另行索引）。
+ * 从冻结 Schema 提取字段元数据（仅字段名/标题/类型；数据值由 collectTerms 另行索引）。
+ * 对象型数据集取根 `properties`；列表型数据集（根为 array）取 `items.properties`。
  */
 function fieldsFromSchema(schemaJson: string): SearchField[] {
   const root = asRecord(JSON.parse(schemaJson));
-  const properties = root ? asRecord(root.properties) : null;
+  if (!root) return [];
+  const container = root.type === "array" ? asRecord(root.items) : root;
+  const properties = container ? asRecord(container.properties) : null;
   if (!properties) return [];
   return Object.keys(properties).map((name) => {
     const prop = asRecord(properties[name]);

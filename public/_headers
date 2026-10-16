@@ -1,0 +1,26 @@
+# LanTai · 静态资源缓存策略
+# 减少页面切换时的回源校验：样式与脚本变化少，给 10 分钟新鲜期；
+# 页面（HTML）从缓存立即呈现、后台重新校验，避免每次切换都阻塞回源。
+/styles.css
+  Cache-Control: public, max-age=600, stale-while-revalidate=86400
+
+/app.js
+  Cache-Control: public, max-age=600, stale-while-revalidate=86400
+
+/*.html
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+
+/
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+
+/docs/
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+
+/status
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+
+/search
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+
+/dataset
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400

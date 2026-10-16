@@ -259,6 +259,9 @@ main {
 .doc-main {
   min-width: 0;
 }
+.sidebar-layout--right {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
 @media (max-width: 860px) {
   .grid-2,
   .grid-3,
@@ -1359,6 +1362,72 @@ dialog.lt-dialog::backdrop {
 @media (max-width: 720px) {
   .stage {
     padding-top: 40px;
+  }
+}
+
+/* --- 首页：左右分栏（左＝身份与搜索，右＝数据目录） --- */
+.home {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: start;
+  padding: 48px 0 32px;
+}
+.home__intro {
+  position: sticky;
+  top: 90px;
+  text-align: left;
+}
+.home .home-title {
+  font-size: clamp(2.6rem, 2rem + 3vw, 4rem);
+}
+.home .naming {
+  margin-left: 0;
+  margin-right: 0;
+  max-width: 40ch;
+}
+.home__lede {
+  color: var(--ink-2);
+  margin: 0 0 22px;
+  max-width: 46ch;
+}
+.home .cta,
+.home .chips {
+  justify-content: flex-start;
+}
+.home .cta {
+  margin-bottom: 20px;
+}
+.home__catalog {
+  min-width: 0;
+}
+.home__catalog-head {
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.home__catalog-head h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.home__catalog-head a {
+  font-size: 0.85rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.home__catalog .meta-row {
+  margin-top: 10px;
+}
+.home__catalog .results {
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  .home {
+    grid-template-columns: 1fr;
+    gap: var(--s5);
+    padding-top: 32px;
+  }
+  .home__intro {
+    position: static;
   }
 }
 .home-title {

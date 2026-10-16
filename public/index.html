@@ -8,37 +8,49 @@
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<a class="skip-link" href="#stage">跳到主要内容</a>
+<a class="skip-link" href="#main">跳到主要内容</a>
 
 <header class="topbar" data-lt-topbar></header>
 
-<main>
+<main id="main" tabindex="-1">
   <div class="container">
-    <div class="stage" id="stage">
-      <h1 class="home-title"><span class="w">兰台</span></h1>
-      <p class="naming">取自《汉书·百官公卿表》，喻数据典藏之机构</p>
+    <div class="home">
+      <section class="home__intro">
+        <p class="eyebrow">公开数据平台</p>
+        <h1 class="home-title"><span class="w">兰台</span></h1>
+        <p class="naming">取自《汉书·百官公卿表》，喻数据典藏之机构</p>
+        <p class="home__lede">
+          以不可变 Schema 编目、数据集级快照发布；任何人可匿名贡献，管理员审阅后合并发布。
+        </p>
 
-      <div class="cta">
-        <a class="btn btn--primary" href="/submit">贡献数据</a>
-        <a class="btn" href="/docs/">文档</a>
-      </div>
+        <div class="cta">
+          <a class="btn btn--primary" href="/submit">贡献数据</a>
+          <a class="btn" href="/docs/">开放接口</a>
+        </div>
 
-      <search class="box">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
-        <label class="sr-only" for="q">搜索数据集、字段与数据内容</label>
-        <input id="q" type="search" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list"
-          placeholder="搜索数据集、字段或数据内容…" autocomplete="off" spellcheck="false" enterkeyhint="search" />
-        <span class="kbd">⌘K</span>
-      </search>
+        <search class="box">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+          <label class="sr-only" for="q">搜索数据集、字段与数据内容</label>
+          <input id="q" type="search" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list"
+            placeholder="搜索数据集、字段或数据内容…" autocomplete="off" spellcheck="false" enterkeyhint="search" />
+          <span class="kbd">⌘K</span>
+        </search>
 
-      <div class="chips" id="chips"><span class="lb">试试：</span></div>
+        <div class="chips" id="chips"><span class="lb">试试：</span></div>
+      </section>
 
-      <div class="meta-row">
-        <span id="scope">正在加载数据目录…</span>
-        <a href="/index.json">读取原始索引 index.json →</a>
-      </div>
+      <section class="home__catalog" aria-labelledby="catalog-title">
+        <div class="spread home__catalog-head">
+          <h2 id="catalog-title">数据目录</h2>
+          <a href="/search">跨数据集搜索 →</a>
+        </div>
+        <div class="meta-row">
+          <span id="scope">正在加载数据目录…</span>
+          <a href="/index.json">读取原始索引 index.json →</a>
+        </div>
 
-      <div class="results" id="results" role="listbox" aria-label="搜索结果"></div>
+        <div class="results" id="results" role="listbox" aria-label="数据集与搜索结果"></div>
+      </section>
     </div>
   </div>
 </main>
@@ -108,8 +120,6 @@
         if (fld.length) groups.push({ name: "字段", kind: "field", items: fld.slice(0, 12) });
         const act = ACTIONS.filter((a) => (`${a.label} ${a.desc} ${a.kw}`).toLowerCase().indexOf(term) !== -1);
         if (act.length) groups.push({ name: "操作", kind: "act", items: act });
-      } else {
-        groups.push({ name: "快捷入口", kind: "act", items: ACTIONS });
       }
       return groups;
     }
@@ -238,7 +248,9 @@
 
       if (!groups.length) {
         const none = document.createElement("div"); none.className = "nohit";
-        none.textContent = "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。";
+        none.textContent = term
+          ? "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。"
+          : "数据目录为空。管理员发布数据集后会显示在这里。";
         resultsEl.appendChild(none);
         scopeEl.textContent = "0 个结果 · 搜索范围：数据集名称、字段与数据内容";
         input.removeAttribute("aria-activedescendant");
