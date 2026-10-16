@@ -675,13 +675,127 @@
       function payloadCard(title, dataset, mode, note) {
         return cardSection(title, (body) => {
           body.appendChild(LT.el("p", { class: "muted", text: note }));
-          const host = LT.el("div", { class: "field" });
-          const ed = LT.jsonEditor(host, {
+
+          const state = { value: undefined, mode: "json" };
+          let structEditor = null;
+          let structDirty = false;
+
+          const jsonHost = LT.el("div", { class: "field" });
+          const jsonEditor = LT.jsonEditor(jsonHost, {
             value: "",
             label: "数据内容（JSON）",
             placeholder: "{\n  \n}",
           });
-          body.appendChild(host);
+
+          const structHost = LT.el("div", { class: "field" });
+
+          const jsonTabId = `payload-${mode}-tab-json`;
+          const structTabId = `payload-${mode}-tab-struct`;
+          const jsonPanelId = `payload-${mode}-panel-json`;
+          const structPanelId = `payload-${mode}-panel-struct`;
+
+          const tablist = LT.el("div", {
+            class: "tabs",
+            role: "tablist",
+            "aria-label": "数据编辑模式",
+          });
+          const jsonTab = LT.el("button", {
+            type: "button",
+            role: "tab",
+            id: jsonTabId,
+            "aria-selected": "true",
+            "aria-controls": jsonPanelId,
+            tabindex: "0",
+            text: "JSON",
+          });
+          const structTab = LT.el("button", {
+            type: "button",
+            role: "tab",
+            id: structTabId,
+            "aria-selected": "false",
+            "aria-controls": structPanelId,
+            tabindex: "-1",
+            text: "结构化",
+          });
+
+          const jsonPanel = LT.el("div", {
+            role: "tabpanel",
+            id: jsonPanelId,
+            "aria-labelledby": jsonTabId,
+            tabindex: "0",
+          });
+          const structPanel = LT.el("div", {
+            role: "tabpanel",
+            id: structPanelId,
+            "aria-labelledby": structTabId,
+            tabindex: "0",
+            hidden: true,
+          });
+
+          jsonPanel.appendChild(jsonHost);
+          structPanel.appendChild(
+            LT.el("p", {
+              class: "hint",
+              text: "结构化视图默认折叠，展开节点时才渲染下层；对象可增删字段，数组可增删与上下移动。",
+            }),
+          );
+          structPanel.appendChild(structHost);
+
+          function selectMode(next) {
+            state.mode = next;
+            const isJson = next === "json";
+            jsonTab.setAttribute("aria-selected", isJson ? "true" : "false");
+            jsonTab.setAttribute("tabindex", isJson ? "0" : "-1");
+            structTab.setAttribute("aria-selected", isJson ? "false" : "true");
+            structTab.setAttribute("tabindex", isJson ? "-1" : "0");
+            jsonPanel.hidden = !isJson;
+            structPanel.hidden = isJson;
+
+            if (isJson) {
+              if (structEditor && structDirty) jsonEditor.setValue(structEditor.value());
+              return;
+            }
+
+            const parsed = jsonEditor.parsed();
+            let seed = state.value;
+            if (parsed.ok && parsed.value !== undefined) seed = parsed.value;
+            if (seed === undefined) seed = {};
+
+            if (!structEditor) {
+              structEditor = LT.dataEditor(structHost, {
+                value: seed,
+                label: "结构化数据",
+                onChange: ({ value }) => {
+                  state.value = value;
+                  structDirty = true;
+                },
+              });
+            } else {
+              structEditor.setValue(seed);
+            }
+            structDirty = false;
+          }
+
+          jsonTab.addEventListener("click", () => {
+            selectMode("json");
+          });
+          structTab.addEventListener("click", () => {
+            selectMode("struct");
+          });
+          tablist.addEventListener("keydown", (e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            const next = state.mode === "json" ? "struct" : "json";
+            selectMode(next);
+            (next === "json" ? jsonTab : structTab).focus();
+          });
+
+          tablist.appendChild(jsonTab);
+          tablist.appendChild(structTab);
+
+          const panels = LT.el("div", { class: "stack" }, [jsonPanel, structPanel]);
+          body.appendChild(tablist);
+          body.appendChild(panels);
 
           const btn = LT.el("button", {
             class: "btn btn--primary",
@@ -689,11 +803,21 @@
             text: mode === "stage" ? "预发布" : "发布",
           });
           btn.addEventListener("click", async () => {
-            const p = ed.parsed();
-            if (!p.ok || p.value === undefined) {
-              LT.toast("数据内容 JSON 无效", { type: "warn" });
-              ed.focus();
-              return;
+            let payload;
+            if (state.mode === "struct") {
+              payload = structEditor ? structEditor.value() : undefined;
+              if (payload === undefined) {
+                LT.toast("请先填写数据内容", { type: "warn" });
+                return;
+              }
+            } else {
+              const p = jsonEditor.parsed();
+              if (!p.ok || p.value === undefined) {
+                LT.toast("数据内容 JSON 无效", { type: "warn" });
+                jsonEditor.focus();
+                return;
+              }
+              payload = p.value;
             }
             if (mode === "publish") {
               const ok = await LT.confirmDialog({
@@ -706,7 +830,7 @@
             }
             run(btn, async () => {
               await LT.post(`/api/admin/datasets/${encodeURIComponent(dataset.id)}/${mode}`, {
-                payload: p.value,
+                payload,
               });
               LT.toast(mode === "stage" ? "已预发布" : "已发布", { type: "ok" });
               await showDetail(dataset.id);

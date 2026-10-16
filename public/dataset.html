@@ -184,6 +184,78 @@
         return card;
       }
 
+      function previewCard(manifest, latest) {
+        var card = LT.el("div", { class: "card card--flush" });
+        card.appendChild(
+          LT.el("div", { class: "card__head" }, [LT.el("h2", { text: "数据预览" })]),
+        );
+
+        var body = LT.el("div", { class: "card__body stack" });
+        var ver = (latest?.dataVersion) || manifest.latest || null;
+
+        if (!ver) {
+          body.appendChild(
+            LT.el("p", { class: "muted", text: "该数据集尚未发布数据，暂无可预览的内容。" }),
+          );
+          card.appendChild(body);
+          return card;
+        }
+
+        var rawUrl = `/${manifest.slug}/versions/${ver}.json`;
+
+        body.appendChild(
+          LT.el("p", { class: "muted" }, [
+            "当前最新数据版本 ",
+            LT.el("code", { text: ver }),
+            "。预览按需加载、默认折叠，展开节点时才渲染下一层，避免大数据拖慢页面。",
+          ]),
+        );
+
+        var status = LT.el("div", {
+          class: "muted",
+          role: "status",
+          "aria-live": "polite",
+          text: "尚未加载预览内容。",
+        });
+        var host = LT.el("div", { class: "stack" });
+
+        var loadBtn = LT.el("button", {
+          class: "btn btn--sm",
+          type: "button",
+          text: "加载数据预览",
+        });
+        var rawLink = LT.el("a", {
+          class: "btn btn--sm btn--ghost",
+          href: rawUrl,
+          target: "_blank",
+          rel: "noopener",
+          text: "查看原始 JSON",
+        });
+
+        loadBtn.addEventListener("click", () => {
+          LT.busy(loadBtn, true);
+          status.textContent = "正在加载数据…";
+          LT.loadJsonStrict(rawUrl)
+            .then((data) => {
+              LT.clear(host);
+              host.appendChild(LT.dataTree(data, { collapsed: true }));
+              status.textContent = "预览已加载，展开各节点查看内容。";
+            })
+            .catch(() => {
+              status.textContent = "加载失败，请稍后重试，或直接查看原始 JSON。";
+            })
+            .finally(() => {
+              LT.busy(loadBtn, false);
+            });
+        });
+
+        body.appendChild(LT.el("div", { class: "cluster" }, [loadBtn, rawLink]));
+        body.appendChild(status);
+        body.appendChild(host);
+        card.appendChild(body);
+        return card;
+      }
+
       function copyText(text, label) {
         if (navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(text);
@@ -287,6 +359,7 @@
 
         body.appendChild(fieldsCard(schemaDoc));
         body.appendChild(versionsCard(manifest));
+        body.appendChild(previewCard(manifest, latest));
         body.appendChild(usageCard(manifest));
       }
 

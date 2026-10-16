@@ -1241,6 +1241,121 @@ main {
   color: var(--ink-3);
 }
 
+/* --- 结构化数据树 / 编辑器 --- */
+.lt-data {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.lt-data__node {
+  margin: 2px 0;
+}
+.lt-data__node > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px 4px;
+  border-radius: var(--r);
+}
+.lt-data__node > summary::-webkit-details-marker {
+  display: none;
+}
+.lt-data__node > summary::before {
+  content: "▸";
+  color: var(--ink-3);
+  transition: transform var(--t);
+}
+.lt-data__node[open] > summary::before {
+  transform: rotate(90deg);
+}
+.lt-data__body {
+  margin-left: 16px;
+  border-left: 1px solid var(--rule);
+  padding-left: 8px;
+}
+.lt-data__rows {
+  display: flex;
+  flex-direction: column;
+}
+.lt-data__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 1px 4px;
+  min-height: 24px;
+}
+.lt-data__row--field,
+.lt-data__row--item {
+  align-items: flex-start;
+}
+.lt-data__key {
+  color: var(--primary);
+}
+.lt-data__key::after {
+  content: ":";
+  color: var(--ink-3);
+}
+.lt-data__badge {
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.lt-data__idx {
+  color: var(--ink-3);
+  min-width: 2.2em;
+  text-align: right;
+}
+.lt-data__val {
+  min-width: 8em;
+  max-width: 28em;
+}
+.lt-data__keyinput {
+  min-width: 6em;
+  max-width: 12em;
+}
+.lt-data__type {
+  max-width: 6.5em;
+}
+.lt-data__check {
+  width: 16px;
+  height: 16px;
+}
+.lt-data__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+.lt-data__actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.lt-data__act--mini {
+  padding: 0 6px;
+}
+.lt-data__more {
+  align-self: flex-start;
+  margin: 4px 0;
+}
+.lt-data--edit .lt-data__node--open {
+  border-left: 1px dashed var(--rule);
+  padding-left: 6px;
+}
+.lt-editor.is-plain .lt-editor__hl {
+  display: none;
+}
+.lt-editor.is-plain .lt-editor__input {
+  color: var(--ink);
+  height: 320px;
+  overflow: auto;
+}
+
 /* --- 结果块 --- */
 .result,
 pre.result {

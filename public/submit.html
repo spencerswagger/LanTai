@@ -49,13 +49,13 @@
             <div class="spread">
               <p class="label" style="margin:0">提交内容</p>
               <div class="tabs" id="mode-toggle" role="tablist" aria-label="编辑方式">
-                <button type="button" data-mode="list" role="tab" aria-selected="true">列表编辑</button>
-                <button type="button" data-mode="json" role="tab" aria-selected="false">JSON 编辑</button>
+                <button type="button" data-mode="struct" role="tab" aria-selected="true" aria-controls="struct-mount">结构化</button>
+                <button type="button" data-mode="json" role="tab" aria-selected="false" aria-controls="editor-mount">JSON 编辑</button>
               </div>
             </div>
             <p class="hint" id="content-hint">默认载入该数据集当前已发布的内容，在其基础上修改后提交。</p>
-            <div id="list-mount"></div>
-            <div id="editor-mount"></div>
+            <div id="struct-mount" role="tabpanel" aria-label="结构化编辑"></div>
+            <div id="editor-mount" role="tabpanel" aria-label="JSON 编辑"></div>
           </div>
 
           <div id="schema-hints" class="stack" aria-live="polite"></div>
@@ -120,7 +120,7 @@
 
       var state = { datasets: [], schema: null, schemaVersion: null, turnstileToken: "", model: undefined };
       var loadedSlug = null;
-      var mode = "list";
+      var mode = "struct";
 
       var els = {
         select: document.getElementById("slug-select"),
@@ -131,7 +131,7 @@
         result: document.getElementById("submit-result"),
         submit: document.getElementById("submit-btn"),
         turnstileWrap: document.getElementById("turnstile-wrap"),
-        listMount: document.getElementById("list-mount"),
+        structMount: document.getElementById("struct-mount"),
         modeToggle: document.getElementById("mode-toggle"),
       };
 
@@ -151,256 +151,65 @@
         }
       }
 
-      var editor = LT.jsonEditor(document.getElementById("editor-mount"), {
-        label: "payload（JSON）",
-        placeholder: '{\n  "字段": "值"\n}',
-        onChange: (p) => {
-          if (p.ok && p.value !== undefined && currentSlug()) setStep(2);
-        },
-      });
+      var editor = null;
+      var jsonMount = document.getElementById("editor-mount");
+      // 惰性创建 JSON 编辑器：默认结构化模式，避免把大 payload 预先塞进 textarea 造成卡顿。
+      function ensureEditor() {
+        if (!editor) {
+          editor = LT.jsonEditor(jsonMount, {
+            label: "payload（JSON）",
+            placeholder: '{\n  "字段": "值"\n}',
+            onChange: (p) => {
+              if (p.ok && p.value !== undefined && currentSlug()) setStep(2);
+            },
+          });
+        }
+        return editor;
+      }
 
       function currentSlug() {
         if (els.manualWrap.style.display !== "none") return els.manual.value.trim();
         return els.select.value.trim();
       }
 
-      /* ---------- 编辑方式：列表 ↔ JSON ---------- */
-      function isRequired(key) {
-        var req = state.schema?.required;
-        return Array.isArray(req) && req.indexOf(key) >= 0;
-      }
-
+      /* ---------- 编辑方式：结构化 ↔ JSON ---------- */
       function markDirty() {
         if (currentSlug()) setStep(2);
       }
 
-      function pushModelToJson() {
-        editor.setValue(state.model === undefined ? "" : state.model);
+      var structEditor = null;
+
+      function pushModel() {
+        if (mode === "json") ensureEditor().setValue(state.model === undefined ? "" : state.model);
+        if (mode === "struct") renderStruct();
       }
 
-      function renderList() {
-        LT.clear(els.listMount);
+      function renderStruct() {
         if (state.model === undefined) {
-          els.listMount.appendChild(
+          LT.clear(els.structMount);
+          structEditor = null;
+          els.structMount.appendChild(
             LT.el("p", { class: "muted", text: "选择数据集后，这里会载入当前已发布内容供你编辑。" }),
           );
           return;
         }
-        if (state.model === null || typeof state.model !== "object") {
-          els.listMount.appendChild(
-            LT.el("p", {
-              class: "muted",
-              text: "该内容不是对象或数组，无法用列表编辑，请切换到 JSON 编辑。",
-            }),
-          );
+        if (structEditor) {
+          structEditor.setValue(state.model);
           return;
         }
-        if (Array.isArray(state.model)) renderArrayList();
-        else renderObjectForm();
-      }
-
-      function renderObjectForm() {
-        var props =
-          state.schema?.properties && typeof state.schema.properties === "object"
-            ? state.schema.properties
-            : null;
-        var keys = props ? Object.keys(props) : Object.keys(state.model);
-        if (keys.length === 0) {
-          els.listMount.appendChild(
-            LT.el("p", { class: "muted", text: "该 Schema 未声明字段，请切换到 JSON 编辑。" }),
-          );
-          return;
-        }
-        var grid = LT.el("div", { class: "grid-2" });
-        keys.forEach((key) => {
-          var sch = (props?.[key]) || {};
-          var wrap = LT.el("div", { class: "field" });
-          wrap.appendChild(
-            LT.el("label", {
-              class: "label",
-              for: `f-${key}`,
-              text: (sch.title || key) + (isRequired(key) ? " *" : ""),
-            }),
-          );
-          wrap.appendChild(fieldInput(key, sch, state.model[key]));
-          if (sch.description) wrap.appendChild(LT.el("p", { class: "hint", text: sch.description }));
-          grid.appendChild(wrap);
-        });
-        els.listMount.appendChild(grid);
-      }
-
-      function fieldInput(key, sch, value) {
-        var t = Array.isArray(sch.type) ? sch.type[0] : sch.type;
-        if (t === "number" || t === "integer") {
-          const num = LT.el("input", {
-            class: "input",
-            type: "number",
-            id: `f-${key}`,
-            value: value === null || value === undefined ? "" : value,
-          });
-          num.addEventListener("input", () => {
-            state.model[key] = num.value === "" ? null : Number(num.value);
+        structEditor = LT.dataEditor(els.structMount, {
+          value: state.model,
+          label: "结构化编辑",
+          pageSize: 50,
+          onChange: (p) => {
+            state.model = p.value;
             markDirty();
-          });
-          return num;
-        }
-        if (t === "boolean") {
-          const box = LT.el("input", { type: "checkbox", id: `f-${key}` });
-          box.checked = !!value;
-          box.addEventListener("change", () => {
-            state.model[key] = box.checked;
-            markDirty();
-          });
-          return LT.el("label", { class: "cluster", for: `f-${key}` }, [
-            box,
-            LT.el("span", { class: "muted", text: "勾选表示 true" }),
-          ]);
-        }
-        if (t === "object" || t === "array" || (!t && sch.properties)) {
-          const ta = LT.el("textarea", {
-            class: "input mono",
-            id: `f-${key}`,
-            spellcheck: "false",
-            placeholder: t === "array" ? "[]" : "{}",
-          });
-          ta.value = value === undefined ? "" : JSON.stringify(value);
-          ta.addEventListener("input", () => {
-            try {
-              state.model[key] = ta.value.trim() === "" ? null : JSON.parse(ta.value);
-              ta.removeAttribute("aria-invalid");
-            } catch (e) {
-              ta.setAttribute("aria-invalid", "true");
-            }
-            markDirty();
-          });
-          return ta;
-        }
-        var inp = LT.el("input", {
-          class: "input",
-          type: "text",
-          id: `f-${key}`,
-          value: value === null || value === undefined ? "" : String(value),
+          },
         });
-        inp.addEventListener("input", () => {
-          state.model[key] = inp.value;
-          markDirty();
-        });
-        return inp;
-      }
-
-      function cellType(props, col) {
-        return props?.[col] ? props[col].type : undefined;
-      }
-
-      function renderArrayList() {
-        var items = state.model;
-        var props =
-          state.schema?.items?.properties
-            ? state.schema.items.properties
-            : null;
-        var cols = props ? Object.keys(props) : items[0] ? Object.keys(items[0]) : [];
-        if (cols.length === 0) {
-          els.listMount.appendChild(
-            LT.el("p", { class: "muted", text: "无法推断列表列，请切换到 JSON 编辑。" }),
-          );
-          return;
-        }
-        var MAX = 500;
-        var table = LT.el("table", { class: "table" });
-        var htr = LT.el("tr");
-        cols.forEach((c) => {
-          htr.appendChild(
-            LT.el("th", { scope: "col", text: (props?.[c]?.title) || c }),
-          );
-        });
-        htr.appendChild(LT.el("th", { scope: "col", text: "" }));
-        table.appendChild(LT.el("thead", {}, htr));
-        var tbody = LT.el("tbody");
-        items.slice(0, MAX).forEach((row, ri) => {
-          var tr = LT.el("tr");
-          cols.forEach((c) => {
-            var t = cellType(props, c);
-            var td = LT.el("td");
-            var inp;
-            if (t === "boolean") {
-              inp = LT.el("input", { type: "checkbox" });
-              inp.checked = !!row[c];
-            } else if (t === "number" || t === "integer") {
-              inp = LT.el("input", {
-                class: "input input--cell",
-                type: "number",
-                value: row[c] === null || row[c] === undefined ? "" : row[c],
-              });
-            } else {
-              inp = LT.el("input", {
-                class: "input input--cell",
-                type: "text",
-                value: row[c] === null || row[c] === undefined ? "" : String(row[c]),
-              });
-            }
-            inp.addEventListener("input", () => {
-              if (t === "boolean") row[c] = inp.checked;
-              else if (t === "number" || t === "integer")
-                row[c] = inp.value === "" ? null : Number(inp.value);
-              else row[c] = inp.value;
-              markDirty();
-            });
-            inp.addEventListener("change", () => {
-              if (t === "boolean") row[c] = inp.checked;
-              markDirty();
-            });
-            td.appendChild(inp);
-            tr.appendChild(td);
-          });
-          var delTd = LT.el("td");
-          delTd.appendChild(
-            LT.el("button", {
-              class: "btn btn--ghost btn--sm",
-              type: "button",
-              text: "删除",
-              onclick: () => {
-                state.model.splice(ri, 1);
-                renderArrayList();
-                markDirty();
-              },
-            }),
-          );
-          tr.appendChild(delTd);
-          tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        els.listMount.appendChild(LT.el("div", { class: "table-wrap" }, table));
-        if (items.length > MAX) {
-          els.listMount.appendChild(
-            LT.el("p", {
-              class: "hint",
-              text: `列表仅显示前 ${MAX} 行（共 ${items.length} 行）；其余行请用 JSON 编辑。`,
-            }),
-          );
-        }
-        els.listMount.appendChild(
-          LT.el("div", { class: "cluster" }, [
-            LT.el("button", {
-              class: "btn btn--sm",
-              type: "button",
-              text: "添加一行",
-              onclick: () => {
-                var r = {};
-                cols.forEach((c) => {
-                  var t = cellType(props, c);
-                  r[c] = t === "number" || t === "integer" ? 0 : t === "boolean" ? false : "";
-                });
-                state.model.push(r);
-                renderArrayList();
-                markDirty();
-              },
-            }),
-          ]),
-        );
       }
 
       function applyMode() {
-        els.listMount.style.display = mode === "list" ? "" : "none";
+        els.structMount.style.display = mode === "struct" ? "" : "none";
         document.getElementById("editor-mount").style.display = mode === "json" ? "" : "none";
         LT.$$("#mode-toggle button").forEach((b) => {
           b.setAttribute("aria-selected", b.getAttribute("data-mode") === mode ? "true" : "false");
@@ -410,26 +219,28 @@
       function setMode(next) {
         if (next === mode) return;
         if (next === "json") {
+          state.model = structEditor ? structEditor.value() : state.model;
           mode = "json";
           applyMode();
-          pushModelToJson();
+          ensureEditor().setValue(state.model === undefined ? "" : state.model);
           return;
         }
-        var p = editor.parsed();
+        var p = editor ? editor.parsed() : { ok: true };
         if (!p.ok) {
-          LT.toast("JSON 有误，无法切换到列表编辑", { type: "warn" });
+          LT.toast("JSON 有误，无法切换到结构化编辑", { type: "warn" });
           return;
         }
         if (p.value !== undefined) state.model = p.value;
         else if (state.model === undefined) state.model = {};
-        mode = "list";
+        mode = "struct";
         applyMode();
-        renderList();
+        renderStruct();
+        if (structEditor) structEditor.focus();
       }
 
       function getPayload() {
-        if (mode === "json") return editor.parsed();
-        return { ok: true, value: state.model };
+        if (mode === "json") return ensureEditor().parsed();
+        return { ok: true, value: structEditor ? structEditor.value() : state.model };
       }
 
       function showManual(prefill) {
@@ -518,8 +329,7 @@
         state.schema = null;
         state.schemaVersion = null;
         state.model = undefined;
-        pushModelToJson();
-        if (mode === "list") renderList();
+        pushModel();
         renderHintsLoading(slug);
         resolveSchema(slug)
           .then((res) => {
@@ -532,8 +342,7 @@
             renderHints(slug, res.version, res.schema);
             return loadCurrentData(slug).then((data) => {
               state.model = data !== undefined ? data : sampleValue(res.schema);
-              pushModelToJson();
-              if (mode === "list") renderList();
+              pushModel();
               LT.toast(
                 data !== undefined
                   ? "已载入当前已发布内容，可在此基础上修改"
@@ -682,8 +491,7 @@
           return;
         }
         state.model = sampleValue(state.schema);
-        pushModelToJson();
-        if (mode === "list") renderList();
+        pushModel();
         LT.toast("已插入示例骨架", { type: "ok" });
       }
 
@@ -756,8 +564,7 @@
 
       function resetForm() {
         state.model = undefined;
-        pushModelToJson();
-        if (mode === "list") renderList();
+        pushModel();
         els.email.value = "";
         LT.clear(els.result);
         state.turnstileToken = "";
@@ -820,11 +627,6 @@
           LT.toast("请先选择或输入数据集 slug", { type: "warn" });
           return;
         }
-        if (mode === "list" && els.listMount.querySelector('[aria-invalid="true"]')) {
-          renderErrorBox("提交失败", "部分字段的 JSON 无效，请修正后再提交。");
-          LT.toast("存在无效字段", { type: "error" });
-          return;
-        }
         var p = getPayload();
         if (!p.ok) {
           renderErrorBox("提交失败", `JSON 语法错误：${p.error.message}`);
@@ -879,7 +681,7 @@
       });
 
       applyMode();
-      renderList();
+      renderStruct();
       setupTurnstile();
       loadDatasets();
     })();

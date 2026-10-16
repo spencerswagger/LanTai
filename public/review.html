@@ -316,7 +316,7 @@
         }
 
         if (views.jsonTree !== undefined && views.jsonTree !== null) {
-          panelMap.tree.panel.appendChild(LT.jsonTree(views.jsonTree));
+          panelMap.tree.panel.appendChild(LT.dataTree(views.jsonTree, { collapsed: true }));
         } else {
           panelMap.tree.panel.appendChild(
             LT.el("p", { class: "muted", text: "该提交暂无可展示的 JSON 内容。" }),

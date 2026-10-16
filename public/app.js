@@ -522,6 +522,7 @@
     }
 
     let lastParse = { ok: true, value: undefined, error: null };
+    const LARGE_TEXT = 100000;
     function validate() {
       const raw = input.value;
       if (raw.trim() === "") {
@@ -537,11 +538,17 @@
     }
     function refresh() {
       const raw = input.value;
-      hl.innerHTML = `${highlightJson(raw)}\n`;
-      hl.scrollLeft = input.scrollLeft;
-      hl.scrollTop = input.scrollTop;
-      input.style.height = "auto";
-      input.style.height = `${input.scrollHeight}px`;
+      const huge = raw.length > LARGE_TEXT;
+      editor.classList.toggle("is-plain", huge);
+      if (huge) {
+        hl.textContent = "";
+      } else {
+        hl.innerHTML = `${highlightJson(raw)}\n`;
+        hl.scrollLeft = input.scrollLeft;
+        hl.scrollTop = input.scrollTop;
+        input.style.height = "auto";
+        input.style.height = `${input.scrollHeight}px`;
+      }
       const p = validate();
       clear(status);
       if (input.value.trim() === "") {
@@ -566,7 +573,11 @@
         else previewWrap.appendChild(el("p", { class: "muted", text: "修正 JSON 后显示预览。" }));
       }
     }
-    input.addEventListener("input", refresh);
+    const refreshSoon = debounce(refresh, 150);
+    input.addEventListener("input", () => {
+      if (input.value.length > LARGE_TEXT) refreshSoon();
+      else refresh();
+    });
     input.addEventListener("scroll", () => {
       hl.scrollLeft = input.scrollLeft;
       hl.scrollTop = input.scrollTop;
@@ -619,10 +630,471 @@
       value: () => input.value,
       parsed: () => validate(),
       setValue: (v) => {
-        input.value = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+        if (typeof v === "string") {
+          input.value = v;
+        } else {
+          const pretty = JSON.stringify(v, null, 2);
+          input.value = pretty.length > LARGE_TEXT ? JSON.stringify(v) : pretty;
+        }
         refresh();
       },
       focus: () => input.focus(),
+    };
+  }
+
+  /* ---------- structured data tree (readonly, lazy + paginated) ---------- */
+  function isContainer(v) {
+    return v !== null && typeof v === "object";
+  }
+  function leafText(v) {
+    if (v === null) return { text: "null", cls: "tree-val tree-val--null" };
+    if (typeof v === "string") return { text: `"${v}"`, cls: "tree-val" };
+    return { text: String(v), cls: "tree-val" };
+  }
+  /**
+   * 只读的结构化数据树：默认折叠，子层在首次展开时才渲染（懒加载）；
+   * 同级容器元素超过 pageSize 时给出「加载更多」分页。用于大数据集预览。
+   */
+  function dataTree(value, opts) {
+    opts = opts || {};
+    const ctx = { pageSize: opts.pageSize || 50, collapsed: opts.collapsed !== false };
+    const root = el("div", { class: "lt-data" });
+    root.appendChild(dataTreeNode(value, null, ctx));
+    return root;
+  }
+  function dataTreeNode(value, key, ctx) {
+    if (!isContainer(value)) {
+      const t = leafText(value);
+      return el("div", { class: "lt-data__row" }, [
+        key != null ? el("span", { class: "lt-data__key", text: String(key) }) : null,
+        el("span", { class: t.cls, text: t.text }),
+      ]);
+    }
+    const isArr = Array.isArray(value);
+    const count = isArr ? value.length : Object.keys(value).length;
+    const details = el("details", { class: "lt-data__node" });
+    if (!ctx.collapsed) details.open = true;
+    details.appendChild(
+      el("summary", { class: "lt-data__row" }, [
+        key != null ? el("span", { class: "lt-data__key", text: String(key) }) : null,
+        el("span", { class: "lt-data__badge", text: isArr ? `数组 ${count}` : `对象 ${count}` }),
+      ]),
+    );
+    const body = el("div", { class: "lt-data__body" });
+    const rows = el("div", { class: "lt-data__rows" });
+    const moreWrap = el("div", { class: "lt-data__morewrap" });
+    body.appendChild(rows);
+    body.appendChild(moreWrap);
+    details.appendChild(body);
+    const keys = isArr ? null : Object.keys(value);
+    let shown = 0;
+    let built = false;
+    function updateMore() {
+      clear(moreWrap);
+      if (shown >= count) return;
+      moreWrap.appendChild(
+        el("button", {
+          class: "btn btn--ghost btn--sm lt-data__more",
+          type: "button",
+          text: `加载更多（还有 ${count - shown} 项）`,
+          onclick: buildNext,
+        }),
+      );
+    }
+    function buildNext() {
+      const size = Math.min(ctx.pageSize, count - shown);
+      for (let i = 0; i < size; i++) {
+        const idx = shown + i;
+        const k = isArr ? idx : keys[idx];
+        rows.appendChild(dataTreeNode(value[k], isArr ? `[${idx}]` : k, ctx));
+      }
+      shown += size;
+      updateMore();
+    }
+    function ensure() {
+      if (built) return;
+      built = true;
+      buildNext();
+    }
+    if (details.open) ensure();
+    details.addEventListener("toggle", () => {
+      if (details.open) ensure();
+    });
+    return details;
+  }
+
+  /* ---------- structured data editor (nested add / edit / delete) ---------- */
+  const LT_TYPE_LABEL = {
+    string: "文本",
+    number: "数字",
+    boolean: "布尔",
+    null: "空值",
+    object: "对象",
+    array: "数组",
+  };
+  function valueType(v) {
+    if (v === null) return "null";
+    if (Array.isArray(v)) return "array";
+    if (typeof v === "object") return "object";
+    if (typeof v === "number") return "number";
+    if (typeof v === "boolean") return "boolean";
+    return "string";
+  }
+  function coerceValue(v, type) {
+    switch (type) {
+      case "string":
+        return v == null
+          ? ""
+          : typeof v === "string"
+            ? v
+            : isContainer(v)
+              ? JSON.stringify(v)
+              : String(v);
+      case "number": {
+        const n = typeof v === "number" ? v : Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+      case "boolean":
+        return typeof v === "boolean" ? v : Boolean(v);
+      case "null":
+        return null;
+      case "object":
+        return isContainer(v) && !Array.isArray(v) ? v : {};
+      case "array":
+        return Array.isArray(v) ? v : v == null ? [] : [v];
+      default:
+        return v;
+    }
+  }
+  /**
+   * 结构化数据编辑器：对象键增删改、数组项追加/插入/删除/上移下移、基本类型按类型化控件编辑、
+   * 类型切换；大数组/大对象分页。返回 { element, value(), parsed(), setValue(v), focus() }。
+   */
+  function dataEditor(mount, opts) {
+    opts = opts || {};
+    const readOnly = !!opts.readOnly;
+    const pageSize = opts.pageSize || 50;
+    const holder = { v: opts.value !== undefined ? opts.value : null };
+    const wrap = el("div", { class: "lt-data lt-data--edit" });
+    const shownMap = new WeakMap();
+    const expandedNodes = new WeakSet();
+
+    function notify() {
+      if (opts.onChange) opts.onChange({ ok: true, value: holder.v });
+    }
+    function rerender() {
+      clear(wrap);
+      wrap.appendChild(editNode(holder, "v", rerender, 0));
+      notify();
+    }
+    function limitOf(container) {
+      if (!shownMap.has(container)) shownMap.set(container, pageSize);
+      return shownMap.get(container);
+    }
+    function iconBtn(label, handler, cls) {
+      return el("button", {
+        class: `btn btn--ghost btn--sm ${cls || "lt-data__act"}`,
+        type: "button",
+        text: label,
+        "aria-label": label,
+        onclick: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handler();
+        },
+      });
+    }
+    function moreBtn(remaining, onClick) {
+      return el("button", {
+        class: "btn btn--ghost btn--sm lt-data__more",
+        type: "button",
+        text: `加载更多（还有 ${remaining} 项）`,
+        onclick: onClick,
+      });
+    }
+    function typeSelect(parent, key, rerender2) {
+      const sel = el("select", { class: "select lt-data__type", "aria-label": "值类型" });
+      for (const t of ["string", "number", "boolean", "null", "object", "array"]) {
+        sel.appendChild(el("option", { value: t, text: LT_TYPE_LABEL[t] }));
+      }
+      const v = parent[key];
+      sel.value = valueType(v);
+      if (readOnly) sel.disabled = true;
+      sel.addEventListener("change", () => {
+        parent[key] = coerceValue(v, sel.value);
+        rerender2();
+      });
+      return sel;
+    }
+    function editNode(parent, key, refresh, depth) {
+      const v = parent[key];
+      if (Array.isArray(v)) return editArray(v, depth);
+      if (isContainer(v)) return editObject(v, depth);
+      return editPrimitive(parent, key, v, refresh);
+    }
+    function editPrimitive(parent, key, v, refresh) {
+      const row = el("div", { class: "lt-data__row lt-data__row--leaf" });
+      let control;
+      if (v === null) {
+        control = el("span", { class: "tree-val tree-val--null", text: "null" });
+      } else if (typeof v === "number") {
+        control = el("input", {
+          class: "input lt-data__val",
+          type: "number",
+          value: String(v),
+          "aria-label": "数字值",
+        });
+        if (readOnly) control.disabled = true;
+        control.addEventListener("input", () => {
+          parent[key] = control.value === "" ? 0 : Number(control.value);
+          notify();
+        });
+      } else if (typeof v === "boolean") {
+        control = el("input", {
+          class: "lt-data__check",
+          type: "checkbox",
+          "aria-label": "布尔值",
+        });
+        control.checked = v;
+        if (readOnly) control.disabled = true;
+        control.addEventListener("change", () => {
+          parent[key] = control.checked;
+          notify();
+        });
+      } else {
+        control = el("input", {
+          class: "input lt-data__val",
+          type: "text",
+          value: String(v),
+          "aria-label": "文本值",
+        });
+        if (readOnly) control.disabled = true;
+        control.addEventListener("input", () => {
+          parent[key] = control.value;
+          notify();
+        });
+      }
+      row.appendChild(control);
+      row.appendChild(typeSelect(parent, key, refresh));
+      return row;
+    }
+    function editObject(obj, depth) {
+      const isOpen = !!opts.expandAll || depth === 0 || expandedNodes.has(obj);
+      const details = el("details", { class: "lt-data__node" });
+      details.open = isOpen;
+      const badge = el("span", {
+        class: "lt-data__badge",
+        text: `对象 ${Object.keys(obj).length}`,
+      });
+      const head = el("summary", { class: "lt-data__head" }, [badge]);
+      const body = el("div", { class: "lt-data__body" });
+      details.appendChild(head);
+      details.appendChild(body);
+      let built = false;
+      function rebuild() {
+        built = false;
+        badge.textContent = `对象 ${Object.keys(obj).length}`;
+        clear(body);
+        build();
+        notify();
+      }
+      function build() {
+        if (built) return;
+        built = true;
+        const keys = Object.keys(obj);
+        const shown = Math.min(limitOf(obj), keys.length);
+        for (let i = 0; i < shown; i++)
+          body.appendChild(editObjectRow(obj, keys[i], rebuild, depth));
+        if (shown < keys.length) {
+          body.appendChild(
+            moreBtn(keys.length - shown, () => {
+              shownMap.set(obj, shown + pageSize);
+              rebuild();
+            }),
+          );
+        }
+      }
+      if (!readOnly) {
+        head.appendChild(
+          iconBtn("新增字段", () => {
+            let nk = "新字段";
+            let n = 2;
+            while (Object.hasOwn(obj, nk)) nk = `新字段${n++}`;
+            obj[nk] = "";
+            expandedNodes.add(obj);
+            rebuild();
+          }),
+        );
+      }
+      if (isOpen) build();
+      details.addEventListener("toggle", () => {
+        if (details.open) {
+          expandedNodes.add(obj);
+          build();
+        } else {
+          expandedNodes.delete(obj);
+        }
+      });
+      return details;
+    }
+    function editObjectRow(obj, k, refresh, depth) {
+      const row = el("div", { class: "lt-data__row lt-data__row--field" });
+      const keyInput = el("input", {
+        class: "input lt-data__keyinput",
+        type: "text",
+        value: k,
+        "aria-label": "字段名",
+      });
+      if (readOnly) keyInput.disabled = true;
+      keyInput.addEventListener("change", () => {
+        const nk = keyInput.value.trim();
+        if (nk === "" || nk === k || Object.hasOwn(obj, nk)) {
+          refresh();
+          return;
+        }
+        const val = obj[k];
+        delete obj[k];
+        obj[nk] = val;
+        refresh();
+      });
+      row.appendChild(keyInput);
+      row.appendChild(editNode(obj, k, refresh, depth + 1));
+      if (!readOnly) {
+        row.appendChild(
+          iconBtn("删除", () => {
+            delete obj[k];
+            refresh();
+          }),
+        );
+      }
+      return row;
+    }
+    function editArray(arr, depth) {
+      const isOpen = !!opts.expandAll || depth === 0 || expandedNodes.has(arr);
+      const details = el("details", { class: "lt-data__node" });
+      details.open = isOpen;
+      const badge = el("span", { class: "lt-data__badge", text: `数组 ${arr.length}` });
+      const head = el("summary", { class: "lt-data__head" }, [badge]);
+      const body = el("div", { class: "lt-data__body" });
+      details.appendChild(head);
+      details.appendChild(body);
+      let built = false;
+      function rebuild() {
+        built = false;
+        badge.textContent = `数组 ${arr.length}`;
+        clear(body);
+        build();
+        notify();
+      }
+      function build() {
+        if (built) return;
+        built = true;
+        const shown = Math.min(limitOf(arr), arr.length);
+        for (let i = 0; i < shown; i++) body.appendChild(editArrayRow(arr, i, rebuild, depth));
+        if (shown < arr.length) {
+          body.appendChild(
+            moreBtn(arr.length - shown, () => {
+              shownMap.set(arr, shown + pageSize);
+              rebuild();
+            }),
+          );
+        }
+      }
+      if (!readOnly) {
+        head.appendChild(
+          iconBtn("追加项", () => {
+            arr.push(defaultItem(arr));
+            expandedNodes.add(arr);
+            shownMap.set(arr, arr.length);
+            rebuild();
+          }),
+        );
+        head.appendChild(
+          iconBtn("插入首项", () => {
+            arr.unshift(defaultItem(arr));
+            expandedNodes.add(arr);
+            rebuild();
+          }),
+        );
+      }
+      if (isOpen) build();
+      details.addEventListener("toggle", () => {
+        if (details.open) {
+          expandedNodes.add(arr);
+          build();
+        } else {
+          expandedNodes.delete(arr);
+        }
+      });
+      return details;
+    }
+    function editArrayRow(arr, i, refresh, depth) {
+      const row = el("div", { class: "lt-data__row lt-data__row--item" });
+      row.appendChild(el("span", { class: "lt-data__idx", text: String(i) }));
+      row.appendChild(editNode(arr, i, refresh, depth + 1));
+      if (!readOnly) {
+        const acts = el("span", { class: "lt-data__actions" });
+        if (i > 0) {
+          acts.appendChild(
+            iconBtn(
+              "上移",
+              () => {
+                swapItem(arr, i, i - 1);
+                refresh();
+              },
+              "lt-data__act lt-data__act--mini",
+            ),
+          );
+        }
+        if (i < arr.length - 1) {
+          acts.appendChild(
+            iconBtn(
+              "下移",
+              () => {
+                swapItem(arr, i, i + 1);
+                refresh();
+              },
+              "lt-data__act lt-data__act--mini",
+            ),
+          );
+        }
+        acts.appendChild(
+          iconBtn("删除", () => {
+            arr.splice(i, 1);
+            refresh();
+          }),
+        );
+        row.appendChild(acts);
+      }
+      return row;
+    }
+    function swapItem(arr, a, b) {
+      const t = arr[a];
+      arr[a] = arr[b];
+      arr[b] = t;
+    }
+    function defaultItem(arr) {
+      return arr.length && isContainer(arr[0]) ? (Array.isArray(arr[0]) ? [] : {}) : "";
+    }
+
+    if (mount) {
+      clear(mount);
+      mount.appendChild(wrap);
+    }
+    rerender();
+
+    return {
+      element: wrap,
+      value: () => holder.v,
+      parsed: () => ({ ok: true, value: holder.v, error: null }),
+      setValue: (v) => {
+        holder.v = v;
+        rerender();
+      },
+      focus: () => {
+        const first = wrap.querySelector("input, select");
+        if (first) first.focus();
+      },
     };
   }
 
@@ -693,6 +1165,8 @@
     steps,
     jsonEditor,
     jsonTree,
+    dataTree,
+    dataEditor,
     renderFields,
     diffView,
     highlightJson,

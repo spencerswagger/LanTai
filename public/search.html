@@ -17,8 +17,8 @@
         <p class="eyebrow">检索</p>
         <h1>跨数据集搜索</h1>
         <p class="lede">
-          在静态索引 <code>/search/index.json</code> 上，按数据集名称、字段与数据内容过滤。
-          索引收录数据集名称、字段元数据（字段名 / 标题 / 类型）以及数据正文中的文本值。
+          在静态索引 <code>/search/index.json</code> 上，按数据集名称与字段即时过滤；
+          命中数据内容时，按需加载对应数据集的完整索引 <code>/{slug}/search-index.json</code>（客户端缓存、并发受限）。
         </p>
       </section>
 
@@ -42,52 +42,113 @@
       "use strict";
       LT.mountShell({ active: "search" });
 
-      var form = LT.$("#search-form");
-      var input = LT.$("#q");
-      var clearBtn = LT.$("#clear-btn");
-      var countEl = LT.$("#count");
-      var results = LT.$("#results");
-      var docs = [];
+      /* 全部 termCount 之和不超过它时，后台预取全部单集索引，让内容搜索即时。 */
+      const CONTENT_PREFETCH_BUDGET = 5000;
+      /* 单集索引的并发上限。 */
+      const MAX_CONCURRENT = 4;
 
-      function fieldMatches(f, q) {
-        return (
-          String(f.name || "").toLowerCase().indexOf(q) !== -1 ||
-          String(f.title || "").toLowerCase().indexOf(q) !== -1 ||
-          String(f.type || "").toLowerCase().indexOf(q) !== -1
-        );
+      const form = LT.$("#search-form");
+      const input = LT.$("#q");
+      const clearBtn = LT.$("#clear-btn");
+      const countEl = LT.$("#count");
+      const results = LT.$("#results");
+      let docs = [];
+
+      /* 单集内容索引缓存：slug -> 已小写、以换行连接的 terms 字符串（空串表示已加载但无匹配/失败）。 */
+      const contentCache = Object.create(null);
+      const contentLoading = Object.create(null);
+      const contentQueue = [];
+      let activeLoads = 0;
+
+      const fieldMatches = (f, q) =>
+        String(f.name || "").toLowerCase().indexOf(q) !== -1 ||
+        String(f.title || "").toLowerCase().indexOf(q) !== -1 ||
+        String(f.type || "").toLowerCase().indexOf(q) !== -1;
+
+      /* 名称 / 字段：用精简全局索引即时匹配。 */
+      const nameFieldMatch = (d, q) =>
+        String(d.slug || "").toLowerCase().indexOf(q) !== -1 ||
+        String(d.title || "").toLowerCase().indexOf(q) !== -1 ||
+        (d.fields || []).some((f) => fieldMatches(f, q));
+
+      /* 数据内容：命中已加载的单集索引。 */
+      const contentMatch = (d, q) => {
+        const c = contentCache[d.slug];
+        return !!c && c.indexOf(q) !== -1;
+      };
+
+      const contentLoaded = (slug) => contentCache[slug] !== undefined;
+
+      const hasPending = (q) =>
+        !!q &&
+        docs.some((d) => (d.termCount || 0) > 0 && !contentLoaded(d.slug));
+
+      function enqueue(slug) {
+        if (contentLoaded(slug) || contentLoading[slug]) return;
+        contentLoading[slug] = true;
+        contentQueue.push(slug);
+        pump();
+      }
+      function pump() {
+        while (activeLoads < MAX_CONCURRENT && contentQueue.length) {
+          const slug = contentQueue.shift();
+          activeLoads++;
+          fetch(`/${encodeURIComponent(slug)}/search-index.json`, { headers: { accept: "application/json" } })
+            .then((r) => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.json();
+            })
+            .then((idx) => {
+              const terms = Array.isArray(idx?.terms) ? idx.terms : [];
+              contentCache[slug] = terms.join("\n").toLowerCase();
+            })
+            .catch(() => { contentCache[slug] = ""; })
+            .then(() => {
+              activeLoads--;
+              delete contentLoading[slug];
+              onContentLoaded();
+              pump();
+            });
+        }
+      }
+      /* 有内容可搜（termCount>0）的数据集视为「相关数据集」，按需入队。 */
+      const requestForSearch = (q) => {
+        if (!q) return;
+        docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueue(d.slug); });
+      };
+
+      const scheduleRender = LT.debounce(() => { if (docs.length) render(); }, 80);
+      function onContentLoaded() {
+        if (input.value.trim()) scheduleRender();
       }
 
-      function docMatches(d, q) {
-        return (
-          String(d.slug || "").toLowerCase().indexOf(q) !== -1 ||
-          String(d.title || "").toLowerCase().indexOf(q) !== -1 ||
-          (d.fields || []).some((f) => fieldMatches(f, q))
-        );
-      }
-
-      function dcard(d) {
-        var card = LT.el("a", { class: "dcard", href: LT.datasetLink(d.slug) }, [
+      function dcard(d, contentHit) {
+        const card = LT.el("a", { class: "dcard", href: LT.datasetLink(d.slug) }, [
           LT.el("span", { class: "dcard__slug", text: d.slug }),
           LT.el("span", { class: "dcard__title", text: d.title || d.slug }),
         ]);
-        var meta = LT.el("div", { class: "dcard__meta" });
+        const meta = LT.el("div", { class: "dcard__meta" });
         meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `Schema ${d.schemaVersion || "—"}` }));
         meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `数据 ${d.dataVersion || "—"}` }));
         meta.appendChild(LT.el("span", { class: "tag tag--plain", text: `${(d.fields || []).length} 字段` }));
+        if (contentHit) meta.appendChild(LT.el("span", { class: "tag tag--plain", text: "数据内容命中" }));
         card.appendChild(meta);
         return card;
       }
 
       function render() {
-        var raw = input.value.trim();
-        var q = raw.toLowerCase();
-        var matched = q
-          ? docs.filter((d) => docMatches(d, q))
+        const raw = input.value.trim();
+        const q = raw.toLowerCase();
+        requestForSearch(q);
+        const matched = q
+          ? docs.filter((d) => nameFieldMatch(d, q) || contentMatch(d, q))
           : docs;
 
-        countEl.textContent = q
+        const searching = hasPending(q);
+        const base = q
           ? `命中 ${matched.length} / ${docs.length} 个数据集`
           : `共 ${docs.length} 个数据集`;
+        countEl.textContent = searching ? `${base} · 正在检索数据内容…` : base;
 
         LT.clear(results);
 
@@ -103,10 +164,18 @@
         }
 
         if (matched.length === 0) {
+          if (searching) {
+            const pendingCards = LT.el("div", { class: "cards" });
+            for (let i = 0; i < 3; i++) {
+              pendingCards.appendChild(LT.el("div", { class: "card" }, [LT.skeleton(3)]));
+            }
+            results.appendChild(pendingCards);
+            return;
+          }
           results.appendChild(
             LT.emptyState(
               "没有匹配的数据集",
-              `没有 slug、标题或字段包含「${raw}」的数据集。`,
+              `没有 slug、标题、字段或数据内容包含「${raw}」的数据集。`,
               LT.el("button", {
                 class: "btn btn--sm",
                 type: "button",
@@ -122,9 +191,10 @@
           return;
         }
 
-        var cards = LT.el("div", { class: "cards" });
+        const cards = LT.el("div", { class: "cards" });
         matched.forEach((d) => {
-          cards.appendChild(dcard(d));
+          const contentHit = !!q && !nameFieldMatch(d, q) && contentMatch(d, q);
+          cards.appendChild(dcard(d, contentHit));
         });
         results.appendChild(cards);
       }
@@ -132,7 +202,7 @@
       function renderSkeleton() {
         countEl.textContent = "正在加载搜索索引…";
         LT.clear(results);
-        var cards = LT.el("div", { class: "cards" });
+        const cards = LT.el("div", { class: "cards" });
         for (let i = 0; i < 3; i++) {
           cards.appendChild(LT.el("div", { class: "card" }, [LT.skeleton(3)]));
         }
@@ -160,8 +230,12 @@
         renderSkeleton();
         LT.loadJsonStrict("/search/index.json")
           .then((index) => {
-            docs = (index?.datasets) || [];
+            docs = index?.datasets || [];
             render();
+            const totalTerms = docs.reduce((n, d) => n + (d.termCount || 0), 0);
+            if (totalTerms <= CONTENT_PREFETCH_BUDGET) {
+              docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueue(d.slug); });
+            }
           })
           .catch(renderError);
       }
