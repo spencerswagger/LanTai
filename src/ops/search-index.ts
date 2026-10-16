@@ -20,13 +20,22 @@ export interface SearchDoc {
   terms: string[];
 }
 
+/**
+ * 全局索引中的数据集条目：不再内联完整 terms（体积过大），仅保留元数据与 termCount。
+ * termCount 为该数据集 per-dataset 索引中 terms 的总数，供前端展示规模。
+ */
+export type GlobalSearchDoc = Omit<SearchDoc, "terms"> & { termCount: number };
+
 export interface GlobalSearchIndex {
   generatedAt: string;
-  datasets: SearchDoc[];
+  datasets: GlobalSearchDoc[];
 }
 
-/** 单数据集索引的规模上限，避免极端数据量下索引失控。 */
-const MAX_TERMS = 10000;
+/**
+ * 单数据集索引的规模上限，避免极端数据量下索引失控。
+ * 取值 60000 以支撑约 10x 目标数据量（如 district_tree≈4.6 万个 name 仍可全量入索引）。
+ */
+const MAX_TERMS = 60000;
 const MAX_TERM_LENGTH = 500;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -177,13 +186,15 @@ export async function writeDatasetSearchIndex(env: Env, datasetId: string): Prom
 }
 
 /**
- * 重建全局搜索索引：遍历全部数据集刷新各自索引，并写 `search/index.json`。
+ * 重建全局搜索索引：遍历全部数据集刷新各自完整 per-dataset 索引，
+ * 再把全局索引 `search/index.json` 写为精简形状（每个条目仅含元数据 + termCount，不内联 terms）。
  */
 export async function rebuildGlobalSearchIndex(env: Env): Promise<{ count: number }> {
   const datasets = await listDatasets(env);
-  const docs: SearchDoc[] = [];
+  const docs: GlobalSearchDoc[] = [];
   for (const dataset of datasets) {
-    docs.push(await writeDatasetSearchIndex(env, dataset.id));
+    const { terms, ...meta } = await writeDatasetSearchIndex(env, dataset.id);
+    docs.push({ ...meta, termCount: terms.length });
   }
   const index: GlobalSearchIndex = { generatedAt: nowIso(), datasets: docs };
   await putReplaceable(env.BUCKET, SEARCH_INDEX_KEY, index);
