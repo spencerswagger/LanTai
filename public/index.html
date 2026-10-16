@@ -91,6 +91,12 @@
       if (i < 0) return e;
       return `${e.slice(0, i)}<span class="hl">${e.slice(i, i + term.length)}</span>${e.slice(i + term.length)}`;
     }
+    function jsonPreview(v) {
+      let s;
+      try { s = JSON.stringify(v); } catch { s = String(v); }
+      if (s == null) return "";
+      return s.length > 120 ? `${s.slice(0, 120)}…` : s;
+    }
     function nameText(d) { return `${d.slug} ${d.title || ""}`; }
     function fieldsText(d) { return (d.fields || []).map((f) => `${f.name} ${f.title || ""} ${f.type || ""}`).join(" "); }
     function termsText(d) { return (d.terms || []).join(" "); }
@@ -154,6 +160,7 @@
             const td = document.createElement("td");
             const v = row ? row[k] : "";
             if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); }
+            else if (v !== null && typeof v === "object") td.innerHTML = esc(jsonPreview(v));
             else td.innerHTML = mark(v == null ? "" : v, term);
             tr.appendChild(td);
           });
