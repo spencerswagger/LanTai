@@ -11,10 +11,9 @@
 (() => {
   const PUBLIC_NAV = [
     { id: "catalog", href: "/", label: "数据目录" },
-    { id: "search", href: "/search", label: "搜索" },
+    { id: "docs", href: "/docs/", label: "取数方式" },
     { id: "submit", href: "/submit", label: "提交数据" },
     { id: "track", href: "/status", label: "查询进度" },
-    { id: "docs", href: "/docs/", label: "开放接口" },
   ];
   const CONSOLE_NAV = [
     { id: "datasets", href: "/admin", label: "数据集与 Schema" },
@@ -257,7 +256,7 @@
       ]),
     );
     const links = el("nav", { class: "cluster", "aria-label": "页脚导航" });
-    links.appendChild(el("a", { href: "/docs/", text: "开放接口" }));
+    links.appendChild(el("a", { href: "/docs/", text: "取数方式" }));
     links.appendChild(el("a", { href: "/docs/reader.html", text: "使用说明" }));
     links.appendChild(el("a", { href: "/", text: "数据目录" }));
     inner.appendChild(links);

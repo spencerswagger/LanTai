@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#080a0f" />
   <title>开放接口 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -86,7 +85,7 @@
             </thead>
             <tbody>
               <tr><td><code>/index.json</code></td><td>GET</td><td>数据目录索引：数据集清单与当前版本</td></tr>
-              <tr><td><code>/search/index.json</code></td><td>GET</td><td>跨数据集搜索索引，仅含字段元数据</td></tr>
+              <tr><td><code>/search/index.json</code></td><td>GET</td><td>跨数据集搜索索引（数据集名称 / 字段 / 数据正文）</td></tr>
               <tr><td><code>/{slug}/manifest.json</code></td><td>GET</td><td>数据集清单：Schema 版本、数据版本、latest / preview</td></tr>
               <tr><td><code>/{slug}/latest.json</code></td><td>GET</td><td>最新正式版指针</td></tr>
               <tr><td><code>/{slug}/preview.json</code></td><td>GET</td><td>预览指针（<strong>非正式</strong>）</td></tr>

@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#080a0f" />
+<title>兰台 LanTai · 搜索（方向 C · 首页 v4）</title>
+<style>
+  :root{
+    --bg:#080a0f; --bg2:#0b0f16; --card:#101725; --card2:#141c2c;
+    --ink:#eaeff7; --ink2:#a3aebf; --ink3:#6b7585;
+    --line:#1d2635; --line2:#28344a;
+    --cyan:#22d3ee; --violet:#8b5cf6; --ok:#34d399;
+    --maxw:1680px; --colw:880px;
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;background:
+      radial-gradient(900px 460px at 50% -12%,rgba(34,211,238,.13),transparent 62%),
+      radial-gradient(700px 420px at 12% 4%,rgba(139,92,246,.10),transparent 60%);}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 40px}
+  @media(max-width:720px){.wrap{padding:0 20px}}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:10px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  header.top{position:relative;z-index:2;border-bottom:1px solid var(--line)}
+  .top .wrap{display:flex;align-items:center;gap:20px;min-height:64px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:1.1rem}
+  .mark{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#22d3ee,#8b5cf6);color:#04131b;display:grid;place-items:center;font-weight:800;font-size:.82rem}
+  .brand small{color:var(--ink3);font-weight:600;font-size:.68rem;letter-spacing:.24em;text-transform:uppercase}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .link{color:var(--ink2);font-weight:600;font-size:.9rem;padding:8px 12px;border-radius:9px}
+  .link:hover{background:var(--card);color:var(--ink)}
+  .who{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ink2);padding:6px 11px;border:1px solid var(--line);border-radius:999px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+
+  main{position:relative;z-index:1;flex:1}
+  .stage{max-width:var(--colw);margin:0 auto;padding:64px 24px 40px;text-align:center}
+  @media(max-width:720px){.stage{padding-top:44px}}
+  .kicker{font-size:.76rem;font-weight:700;letter-spacing:.28em;color:var(--cyan);margin:0 0 16px}
+  h1{font-size:clamp(2.6rem,1.6rem+3vw,4rem);line-height:1;letter-spacing:.08em;margin:0 0 18px;font-weight:800}
+  .naming{font-size:clamp(1rem,.95rem+.35vw,1.16rem);color:var(--ink2);max-width:48ch;margin:0 auto 10px;line-height:1.75}
+  .naming cite{font-style:normal;color:var(--cyan);white-space:nowrap}
+  .func{font-size:.86rem;color:var(--ink3);max-width:58ch;margin:0 auto 28px;line-height:1.8}
+
+  .box{position:relative;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line2);border-radius:14px;padding:0 16px;height:62px;transition:border-color .15s,box-shadow .15s}
+  .box:focus-within{border-color:var(--cyan);box-shadow:0 0 0 4px rgba(34,211,238,.12)}
+  .box svg{flex:none;color:var(--ink3)}
+  .box input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:1.06rem}
+  .box input::placeholder{color:var(--ink3)}
+  .kbd{flex:none;font-family:var(--mono);font-size:.74rem;color:var(--ink3);border:1px solid var(--line2);border-radius:7px;padding:3px 7px}
+
+  .meta-row{display:flex;justify-content:space-between;gap:16px;margin:14px 2px 0;color:var(--ink3);font-size:.82rem;flex-wrap:wrap;text-align:left}
+  .meta-row a{color:var(--cyan);font-weight:600}
+
+  .results{margin-top:18px;text-align:left;border:1px solid var(--line);border-radius:14px;background:var(--bg2);overflow:hidden}
+  .results:empty{display:none}
+  .grp{padding:12px 18px 6px;font-size:.72rem;letter-spacing:.14em;color:var(--ink3);font-weight:700}
+  .grp:not(:first-child){border-top:1px solid var(--line);margin-top:6px;padding-top:16px}
+  .opt{display:flex;align-items:center;gap:14px;padding:13px 18px;cursor:pointer;border-left:2px solid transparent}
+  .opt + .opt{border-top:1px solid rgba(255,255,255,.04)}
+  .opt .ic{width:26px;height:26px;flex:none;border-radius:8px;background:var(--card2);border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:.72rem;color:var(--ink3)}
+  .opt .tx{min-width:0}
+  .opt .t{display:block;font-weight:650}
+  .opt .d{display:block;color:var(--ink3);font-family:var(--mono);font-size:.78rem;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .opt .tail{margin-left:auto;color:var(--ink3);font-size:.82rem;white-space:nowrap}
+  .opt[aria-selected="true"],.opt:hover{background:rgba(34,211,238,.07);border-left-color:var(--cyan)}
+  .opt .hl{color:var(--cyan);font-weight:750}
+  .opt .pin{color:var(--ink3);font-family:var(--mono);font-size:.76rem}
+  .nohit{padding:26px 18px;color:var(--ink2);text-align:center}
+  @media(max-width:720px){
+    .box{height:56px}
+    .opt{flex-wrap:wrap;gap:8px 12px}
+    .opt .tx{flex:1 1 100%;min-width:0}
+    .opt .tail{margin-left:0}
+  }
+
+  footer{position:relative;z-index:1;border-top:1px solid var(--line);padding:20px 0 34px;color:var(--ink3);font-size:.82rem}
+  footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  footer a:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#"><span class="mark">兰</span>兰台<small>LanTai</small></a>
+  <div class="right">
+    <a class="link" href="#">提交数据</a>
+    <a class="link" href="#">控制台</a>
+    <span class="who"><span class="dot"></span>dev@localhost</span>
+  </div>
+</div></header>
+
+<main>
+  <div class="stage">
+    <p class="kicker">兰台 · LanTai</p>
+    <h1>兰台</h1>
+    <p class="naming">「兰台」为汉代宫廷藏书与校勘典籍之所，见<cite>《汉书·百官公卿表》</cite>；此处取「典藏」之意。</p>
+    <p class="func">编目、发布与取用公开数据：以 JSON Schema 定义字段，以不可变快照发布版本；读取直接命中静态文件。</p>
+
+    <div class="box" role="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+      <label class="sr" for="q">搜索数据集、字段或操作</label>
+      <input id="q" type="search" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list"
+        placeholder="搜索数据集、字段，或输入「提交 / 取数」…" autocomplete="off" spellcheck="false" />
+      <span class="kbd">⌘K</span>
+    </div>
+
+    <div class="meta-row">
+      <span id="scope">共 3 个数据集 · 搜索范围：数据集与字段元数据（不含数据内容）</span>
+      <a href="#" id="hint-json">读取原始索引 index.json →</a>
+    </div>
+
+    <div class="results" id="results" role="listbox" aria-label="搜索结果"></div>
+  </div>
+</main>
+
+<footer><div class="wrap">
+  <span>兰台 LanTai · 公开数据编目与发布</span>
+  <span><a href="#">取数方式</a> · <a href="#">使用说明</a> · <a href="#">控制台</a></span>
+</div></footer>
+
+<script>
+  (function () {
+    "use strict";
+    var BASE = "https://lantai.test.fengcy.cloud";
+
+    // 预览用内置数据；在真实站点上会优先同源拉取 /search/index.json
+    var FALLBACK = {
+      datasets: [
+        { slug: "demo-population", title: "示例：人口统计", schemaVersion: "1.0.0", dataVersion: "1",
+          fields: [{ name: "region", title: "地区", type: "string" }, { name: "population", title: "人口", type: "number" }] },
+        { slug: "demo-transport", title: "示例：交通流量", schemaVersion: "2.1.0", dataVersion: "4",
+          fields: [{ name: "route", title: "线路", type: "string" }, { name: "volume", title: "客流量", type: "number" }, { name: "level", title: "拥挤度", type: "string" }] },
+        { slug: "demo-budget", title: "示例：财政预算", schemaVersion: "1.4.2", dataVersion: "2",
+          fields: [{ name: "department", title: "部门", type: "string" }, { name: "amount", title: "金额（万元）", type: "number" }, { name: "year", title: "年度", type: "number" }] }
+      ]
+    };
+
+    var ACTIONS = [
+      { id: "submit", label: "提交数据", desc: "匿名提交符合 Schema 的内容", kw: "提交 投稿 贡献 上传 submit", href: "#" },
+      { id: "api", label: "取数方式", desc: "静态 JSON 接口与缓存说明", kw: "取数 接口 api 文档 json 下载", href: "#" },
+      { id: "preview", label: "数据预览", desc: "直接查看已发布快照内容", kw: "预览 数据 查看 preview", href: "#" },
+      { id: "console", label: "控制台", desc: "编目、审阅与发布", kw: "控制台 后台 管理 admin 审阅", href: "#" },
+      { id: "guide", label: "使用说明", desc: "读者 / 贡献者 / 运营者指南", kw: "说明 帮助 文档 指南 docs", href: "#" }
+    ];
+
+    var docs = FALLBACK.datasets;
+    var resultsEl = document.getElementById("results");
+    var input = document.getElementById("q");
+    var scopeEl = document.getElementById("scope");
+    var flat = [];
+    var active = -1;
+
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function mark(text, term) {
+      var e = esc(text);
+      if (!term) return e;
+      var i = e.toLowerCase().indexOf(term.toLowerCase());
+      if (i < 0) return e;
+      return e.slice(0, i) + '<span class="hl">' + e.slice(i, i + term.length) + "</span>" + e.slice(i + term.length);
+    }
+
+    function build(term) {
+      var groups = [], items = [];
+      var q = (term || "").trim().toLowerCase();
+
+      var dst = docs.filter(function (d) {
+        if (!q) return true;
+        return (d.slug + " " + (d.title || "")).toLowerCase().indexOf(q) !== -1;
+      });
+      if (dst.length) {
+        groups.push({ name: "数据集", items: dst.map(function (d) {
+          return { kind: "ds", slug: d.slug, t: d.title || d.slug,
+            d: d.slug + " · " + ((d.fields && d.fields.length) || 0) + " 个字段",
+            tail: "Schema " + (d.schemaVersion || "—"), href: "#", icon: "DS" };
+        }) });
+      }
+
+      if (q) {
+        var fld = [];
+        docs.forEach(function (d) {
+          (d.fields || []).forEach(function (f) {
+            if (((f.name || "") + " " + (f.title || "") + " " + (f.type || "") + " " + d.slug).toLowerCase().indexOf(q) !== -1) {
+              fld.push({ kind: "field", t: f.title || f.name, d: f.name + " · " + (f.type || ""), tail: d.slug, slug: d.slug, href: "#", icon: "≡" });
+            }
+          });
+        });
+        if (fld.length) groups.push({ name: "字段", items: fld.slice(0, 12) });
+
+        var act = ACTIONS.filter(function (a) {
+          return (a.label + " " + a.desc + " " + a.kw).toLowerCase().indexOf(q) !== -1;
+        });
+        if (act.length) groups.push({ name: "操作", items: act.map(function (a) {
+          return { kind: "act", t: a.label, d: a.desc, tail: "打开", href: a.href, icon: "→" };
+        }) });
+      } else {
+        groups.push({ name: "常用操作", items: ACTIONS.map(function (a) {
+          return { kind: "act", t: a.label, d: a.desc, tail: "打开", href: a.href, icon: "→" };
+        }) });
+      }
+      return { groups: groups, q: q };
+    }
+
+    function render() {
+      var out = build(input.value);
+      flat = [];
+      resultsEl.textContent = "";
+      if (!out.groups.length) {
+        var d = document.createElement("div");
+        d.className = "nohit";
+        d.textContent = "没有匹配结果。试试「人口 / 字段 / 提交」等关键词。";
+        resultsEl.appendChild(d);
+        active = -1;
+        input.removeAttribute("aria-activedescendant");
+        scopeEl.textContent = "0 个结果 · 搜索范围：数据集与字段元数据（不含数据内容）";
+        return;
+      }
+      out.groups.forEach(function (g) {
+        var h = document.createElement("div");
+        h.className = "grp";
+        h.textContent = g.name;
+        resultsEl.appendChild(h);
+        g.items.forEach(function (it) {
+          var idx = flat.length;
+          flat.push(it);
+          var row = document.createElement("div");
+          row.className = "opt";
+          row.setAttribute("role", "option");
+          row.id = "opt-" + idx;
+          row.setAttribute("aria-selected", "false");
+          row.innerHTML =
+            '<span class="ic">' + esc(it.icon || "·") + "</span>" +
+            '<span class="tx"><span class="t">' + mark(it.t, out.q) + '</span>' +
+            '<span class="d">' + esc(it.d) + "</span></span>" +
+            '<span class="tail">' + esc(it.tail || "") + "</span>";
+          row.addEventListener("mouseenter", function () { setActive(idx); });
+          row.addEventListener("click", function () { open(it); });
+          resultsEl.appendChild(row);
+        });
+      });
+      var n = flat.length;
+      scopeEl.textContent = (out.q ? "命中 " + n + " 项" : "共 " + docs.length + " 个数据集") +
+        " · 搜索范围：数据集与字段元数据（不含数据内容）";
+      setActive(n ? 0 : -1);
+    }
+
+    function setActive(i) {
+      var opts = resultsEl.querySelectorAll(".opt");
+      opts.forEach(function (o, j) { o.setAttribute("aria-selected", j === i ? "true" : "false"); });
+      active = i;
+      if (i >= 0 && opts[i]) {
+        input.setAttribute("aria-activedescendant", opts[i].id);
+        if (opts[i].scrollIntoView) opts[i].scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+    function open(it) {
+      if (!it) return;
+      // 真实站点：跳转到对应页面（数据集详情 / 提交 / 文档 / 控制台）
+      location.hash = it.slug ? "dataset:" + it.slug : (it.kind === "act" ? it.t : "#");
+    }
+
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown") { e.preventDefault(); if (flat.length) setActive(Math.min(active + 1, flat.length - 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (flat.length) setActive(Math.max(active - 1, 0)); }
+      else if (e.key === "Enter") { e.preventDefault(); open(flat[active]); }
+      else if (e.key === "Escape") { input.value = ""; render(); }
+    });
+    document.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); input.focus(); input.select(); }
+    });
+
+    // 真实站点优先同源索引；本地预览（file:）直接用内置数据，避免跨域噪音
+    if (location.protocol !== "file:") {
+      fetch("/search/index.json")
+        .then(function (r) { if (!r.ok) throw new Error("http"); return r.json(); })
+        .then(function (j) { if (j && j.datasets && j.datasets.length) { docs = j.datasets; render(); } })
+        .catch(function () {});
+    }
+
+    render();
+    input.focus();
+  })();
+</script>
+</body>
+</html>

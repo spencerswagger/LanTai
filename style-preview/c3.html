@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#080a0f" />
+<title>兰台 LanTai · 公开数据目录（方向 C · 首页 v3）</title>
+<style>
+  :root{
+    --bg:#080a0f; --bg2:#0b0f16; --card:#101725; --card2:#141c2c;
+    --ink:#eaeff7; --ink2:#a3aebf; --ink3:#6b7585;
+    --line:#1d2635; --line2:#28344a;
+    --cyan:#22d3ee; --violet:#8b5cf6; --ok:#34d399; --amber:#f0b45a;
+    --maxw:1680px;
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 40px}
+  @media(max-width:720px){.wrap{padding:0 20px}}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:8px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  .note{background:#05070b;border-bottom:1px solid var(--line);color:var(--ink2);font-size:.82rem}
+  .note .wrap{display:flex;gap:18px;align-items:center;min-height:40px;flex-wrap:wrap}
+  .note b{color:#fff}.note a{color:#8ea0b8}.note a:hover{color:#fff}
+
+  header.top{position:sticky;top:0;z-index:30;background:rgba(8,10,15,.86);backdrop-filter:blur(14px) saturate(1.3);border-bottom:1px solid var(--line)}
+  .top .wrap{display:flex;align-items:center;gap:34px;min-height:68px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:1.12rem}
+  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#22d3ee,#8b5cf6);color:#04131b;display:grid;place-items:center;font-weight:800;font-size:.85rem}
+  .brand small{color:var(--ink3);font-weight:600;font-size:.7rem;letter-spacing:.24em;text-transform:uppercase}
+  nav.main{display:flex;gap:2px}
+  nav.main a{padding:9px 14px;border-radius:10px;color:var(--ink2);font-weight:550}
+  nav.main a:hover{background:var(--card);color:var(--ink)}
+  nav.main a[aria-current]{background:var(--card2);color:var(--ink)}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:11px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit;font-weight:650;font-size:.92rem;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#3a4a66}
+  .btn.primary{background:linear-gradient(135deg,#22d3ee,#8b5cf6);border-color:transparent;color:#04131b}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.lg{padding:14px 24px;border-radius:13px;font-size:1rem}
+  .who{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--ink2);padding:7px 12px;border:1px solid var(--line);border-radius:999px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  @media(max-width:940px){nav.main{display:none}}
+
+  /* ---------- Hero：名字 → 命名依据 → 功能（小字） ---------- */
+  .hero{border-bottom:1px solid var(--line);background:radial-gradient(1100px 430px at 86% -16%,rgba(34,211,238,.10),transparent 62%),radial-gradient(780px 360px at 4% 0%,rgba(139,92,246,.10),transparent 60%)}
+  .hero .wrap{display:grid;grid-template-columns:1.25fr 1fr;gap:72px;align-items:center;padding-top:82px;padding-bottom:78px}
+  @media(max-width:1080px){.hero .wrap{grid-template-columns:1fr;gap:44px;padding-top:54px;padding-bottom:54px}}
+  .kicker{font-size:.78rem;font-weight:700;letter-spacing:.28em;color:var(--cyan);margin-bottom:18px}
+  h1{font-size:clamp(3rem,1.8rem+4vw,5.2rem);line-height:1;letter-spacing:.06em;margin:0 0 22px;font-weight:800}
+  .naming{font-size:clamp(1.1rem,1rem+.5vw,1.34rem);color:var(--ink);max-width:44ch;margin:0 0 18px;line-height:1.7}
+  .naming cite{font-style:normal;color:var(--cyan)}
+  .func{font-size:.94rem;color:var(--ink3);max-width:66ch;margin:0 0 30px;line-height:1.85}
+  .cta{display:flex;gap:12px;flex-wrap:wrap}
+  .facts{margin-top:28px;display:flex;gap:8px 20px;flex-wrap:wrap;color:var(--ink3);font-size:.85rem}
+  .facts span+span::before{content:"·";margin-right:20px;color:var(--line2)}
+
+  /* 首屏右侧：真实数据片段（不是列表，避免与下方数据目录重复） */
+  .snip{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line2);border-radius:18px;overflow:hidden;box-shadow:0 30px 70px -40px rgba(0,0,0,.9)}
+  .snip .bar{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line);color:var(--ink3);font-family:var(--mono);font-size:.78rem}
+  .snip .bar .g{display:flex;gap:6px;margin-right:6px}
+  .snip .bar i{width:9px;height:9px;border-radius:50%;background:#2b3648;display:block}
+  .snip pre{margin:0;padding:18px 20px;font-family:var(--mono);font-size:.86rem;line-height:1.75;color:#c9d4e4;overflow:auto}
+  .snip .cf{display:flex;justify-content:space-between;gap:12px;padding:12px 18px;border-top:1px solid var(--line);color:var(--ink3);font-size:.82rem;flex-wrap:wrap}
+  .snip .cf a{color:var(--cyan);font-weight:600}
+  .tk-key{color:#7fd7ea}.tk-str{color:#8fe3b8}.tk-num{color:#f0b45a}.tk-pun{color:#6b7585}
+
+  section.block{padding:66px 0}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:26px;margin-bottom:22px;flex-wrap:wrap}
+  .sec-head h2{font-size:clamp(1.5rem,1.15rem+1.1vw,2rem);letter-spacing:-.02em;margin:0}
+  .sec-head p{margin:8px 0 0;color:var(--ink2);max-width:78ch}
+  .tools{display:flex;align-items:center;gap:10px}
+  .search{display:flex;align-items:center;gap:9px;border:1px solid var(--line2);border-radius:11px;padding:0 13px;height:42px;background:var(--card);min-width:320px}
+  .search svg{flex:none;color:var(--ink3)}
+  .search input{border:0;outline:0;background:transparent;color:var(--ink);font:inherit;width:100%}
+  .search input::placeholder{color:var(--ink3)}
+
+  .tablecard{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--bg2)}
+  table{width:100%;border-collapse:collapse}
+  thead th{text-align:left;font-size:.72rem;letter-spacing:.1em;color:var(--ink3);font-weight:700;padding:15px 22px;background:var(--card);border-bottom:1px solid var(--line2)}
+  tbody td{padding:19px 22px;border-bottom:1px solid var(--line)}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:rgba(255,255,255,.035)}
+  tbody tr:hover .go{color:var(--cyan)}
+  .t{font-weight:650}
+  .slug{font-family:var(--mono);font-size:.8rem;color:var(--ink3);margin-top:2px}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.76rem;padding:3px 10px;border-radius:999px;background:var(--card2);border:1px solid var(--line2);color:var(--ink2)}
+  .chip.ok{color:var(--ok);border-color:rgba(52,211,153,.34)}
+  .num{font-family:var(--mono);color:var(--ink2);font-size:.88rem}
+  .go{color:var(--ink3);font-weight:650;font-size:.88rem;white-space:nowrap;transition:.15s}
+  .tfoot{display:flex;justify-content:space-between;gap:16px;padding:14px 22px;background:var(--card);border-top:1px solid var(--line2);color:var(--ink2);font-size:.86rem;flex-wrap:wrap}
+  .tfoot a{color:var(--cyan);font-weight:600}
+  .empty{padding:44px 22px;text-align:center;color:var(--ink2)}
+  @media(max-width:880px){.col-sm{display:none}}
+
+  /* ---------- 数据预览（替代原「取数方式」） ---------- */
+  .prevgrid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:26px;align-items:start}
+  @media(max-width:980px){.prevgrid{grid-template-columns:1fr}}
+  .dsnav{border:1px solid var(--line);border-radius:16px;background:var(--bg2);overflow:hidden}
+  .dsnav h3{margin:0;padding:14px 18px;font-size:.72rem;letter-spacing:.14em;color:var(--ink3);border-bottom:1px solid var(--line);font-weight:700}
+  .dsnav button{display:block;width:100%;text-align:left;background:none;border:0;border-left:2px solid transparent;color:var(--ink2);font:inherit;padding:14px 18px;cursor:pointer}
+  .dsnav button+button{border-top:1px solid var(--line)}
+  .dsnav button:hover{background:rgba(255,255,255,.03);color:var(--ink)}
+  .dsnav button[aria-current="true"]{background:rgba(34,211,238,.07);border-left-color:var(--cyan);color:var(--ink)}
+  .dsnav button .n{display:block;font-weight:650}
+  .dsnav button .m{display:block;font-family:var(--mono);font-size:.76rem;color:var(--ink3);margin-top:2px}
+
+  .prev{border:1px solid var(--line);border-radius:16px;background:var(--bg2);overflow:hidden}
+  .prev-head{display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .prev-head h3{margin:0;font-size:1.08rem}
+  .prev-head .meta{color:var(--ink3);font-family:var(--mono);font-size:.8rem}
+  .seg{margin-left:auto;display:flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+  .seg button{background:var(--card);border:0;color:var(--ink2);font:inherit;font-size:.84rem;font-weight:600;padding:8px 14px;cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line2)}
+  .seg button[aria-pressed="true"]{background:var(--card2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--cyan)}
+  .fields{display:flex;gap:8px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .fchip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);border-radius:999px;padding:4px 12px;font-size:.8rem;color:var(--ink2)}
+  .fchip b{color:var(--ink);font-weight:650}
+  .fchip .ty{font-family:var(--mono);font-size:.72rem;color:var(--cyan)}
+  .fchip .req{color:var(--amber);font-size:.72rem}
+  .prev-body{padding:4px 0 0}
+  .prev-body table td,.prev-body table th{padding:14px 20px}
+  .jsonview{margin:0;padding:18px 20px;font-family:var(--mono);font-size:.84rem;line-height:1.75;color:#c9d4e4;overflow:auto;max-height:320px}
+  .prev-foot{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+  .prev-foot code{font-family:var(--mono);font-size:.84rem;color:#bfe9f5}
+  .copy{border:1px solid var(--line2);background:var(--card2);color:var(--ink2);border-radius:9px;padding:7px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
+  .copy:hover{border-color:#3a4a66;color:var(--ink)}
+  .copy.done{color:var(--ok);border-color:rgba(52,211,153,.4)}
+  .prev-foot .sp{margin-left:auto}
+
+  footer{border-top:1px solid var(--line);padding:38px 0 70px;color:var(--ink3);font-size:.86rem;margin-top:16px}
+  footer .wrap{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  footer a:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="note"><div class="wrap">
+  <b>方向 C · 首页 v3（名字与命名依据前置；去掉重复；新增数据预览）</b>
+  <a href="all.html">返回对比</a><a href="c2.html">查看 v2</a>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <a class="brand" href="#"><span class="mark">兰</span>兰台<small>LanTai</small></a>
+  <nav class="main" aria-label="主导航">
+    <a href="#catalog" aria-current="page">数据目录</a>
+    <a href="#preview">数据预览</a>
+    <a href="#">提交数据</a>
+    <a href="#">控制台</a>
+  </nav>
+  <div class="right">
+    <a class="btn primary" href="#">提交数据</a>
+    <span class="who"><span class="dot"></span>dev@localhost</span>
+  </div>
+</div></header>
+
+<section class="hero"><div class="wrap">
+  <div>
+    <p class="kicker">兰台 · LanTai</p>
+    <h1>兰台</h1>
+    <p class="naming">
+      「兰台」为汉代宫廷藏书与校勘典籍之所，见<cite>《汉书·百官公卿表》</cite>。
+      此处取其<cite>典藏</cite>之意：数据一旦发布，长期可读、可溯源。
+    </p>
+    <p class="func">
+      兰台用于编目、发布与取用公开数据：以 JSON Schema 定义字段，以不可变快照发布版本；贡献者匿名提交，管理员审阅后并入正式版本。
+      读取直接命中静态文件，不消耗计算。
+    </p>
+    <div class="cta">
+      <a class="btn primary lg" href="#catalog">浏览数据目录</a>
+      <a class="btn lg" href="#preview">查看数据预览</a>
+    </div>
+    <p class="facts"><span>1 个数据集</span><span>1 个已发布版本</span><span>读取不消耗计算</span></p>
+  </div>
+
+  <aside class="snip" aria-label="数据片段示例">
+    <div class="bar"><span class="g"><i></i><i></i><i></i></span>demo-population / latest.json</div>
+    <pre id="heroSnip"></pre>
+    <div class="cf"><span>最新快照 v1 · Schema 1.0.0</span><a href="#preview">查看完整数据 →</a></div>
+  </aside>
+</div></section>
+
+<section class="block" id="catalog"><div class="wrap">
+  <div class="sec-head">
+    <div>
+      <h2>数据目录</h2>
+      <p>已发布的数据集。点击任意一行查看字段定义、历史版本与取用地址。</p>
+    </div>
+    <div class="tools">
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input id="q" type="search" placeholder="搜索数据集、字段…" aria-label="搜索数据集" />
+      </label>
+    </div>
+  </div>
+
+  <div class="tablecard">
+    <table>
+      <caption class="sr">已发布数据集列表</caption>
+      <thead><tr>
+        <th scope="col">数据集</th><th scope="col" class="col-sm">标题</th><th scope="col">Schema</th>
+        <th scope="col" class="col-sm">数据版本</th><th scope="col" class="col-sm">更新时间</th><th scope="col"><span class="sr">操作</span></th>
+      </tr></thead>
+      <tbody id="rows">
+        <tr data-slug="demo-population" data-search="demo-population 示例：人口统计 region population 地区 人口">
+          <td><div class="t">demo-population</div><div class="slug">2 个字段</div></td>
+          <td class="col-sm">示例：人口统计</td><td><span class="chip ok">1.0.0</span></td>
+          <td class="col-sm num">v1</td><td class="col-sm num">2026-10-15 17:27</td>
+          <td style="text-align:right"><span class="go">查看 →</span></td>
+        </tr>
+        <tr data-slug="demo-transport" data-search="demo-transport 示例：交通流量 route volume level 线路 客流量">
+          <td><div class="t">demo-transport</div><div class="slug">3 个字段</div></td>
+          <td class="col-sm">示例：交通流量</td><td><span class="chip ok">2.1.0</span></td>
+          <td class="col-sm num">v4</td><td class="col-sm num">2026-10-14 09:02</td>
+          <td style="text-align:right"><span class="go">查看 →</span></td>
+        </tr>
+        <tr data-slug="demo-budget" data-search="demo-budget 示例：财政预算 department amount year 部门 金额 年度">
+          <td><div class="t">demo-budget</div><div class="slug">3 个字段</div></td>
+          <td class="col-sm">示例：财政预算</td><td><span class="chip">1.4.2</span></td>
+          <td class="col-sm num">v2</td><td class="col-sm num">2026-10-12 15:41</td>
+          <td style="text-align:right"><span class="go">查看 →</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="tfoot">
+      <span id="count">共 3 个数据集</span>
+      <a href="#preview">查看数据预览 →</a>
+    </div>
+  </div>
+</div></section>
+
+<section class="block" id="preview" style="border-top:1px solid var(--line);background:var(--bg2)"><div class="wrap">
+  <div class="sec-head">
+    <div>
+      <h2>数据预览</h2>
+      <p>直接查看已发布快照的内容与字段定义。左侧切换数据集，右上可切换表格 / JSON 视图。</p>
+    </div>
+  </div>
+
+  <div class="prevgrid">
+    <nav class="dsnav" id="dsnav" aria-label="选择数据集">
+      <h3>数据集</h3>
+      <button type="button" data-slug="demo-population" aria-current="true"><span class="n">示例：人口统计</span><span class="m">demo-population · v1</span></button>
+      <button type="button" data-slug="demo-transport"><span class="n">示例：交通流量</span><span class="m">demo-transport · v4</span></button>
+      <button type="button" data-slug="demo-budget"><span class="n">示例：财政预算</span><span class="m">demo-budget · v2</span></button>
+    </nav>
+
+    <div class="prev">
+      <div class="prev-head">
+        <h3 id="pv-title">示例：人口统计</h3>
+        <span class="meta" id="pv-meta">Schema 1.0.0 · v1 · 2026-10-15 17:27</span>
+        <div class="seg" role="group" aria-label="视图">
+          <button type="button" id="seg-table" aria-pressed="true">表格</button>
+          <button type="button" id="seg-json" aria-pressed="false">JSON</button>
+        </div>
+      </div>
+      <div class="fields" id="pv-fields"></div>
+      <div class="prev-body" id="pv-body"></div>
+      <div class="prev-foot">
+        <code id="pv-path">/demo-population/latest.json</code>
+        <button class="copy" type="button" id="pv-copy">复制地址</button>
+        <span class="sp"></span>
+        <a class="go" href="#catalog" style="color:var(--cyan);font-weight:650;font-size:.86rem">查看该数据集全部版本 →</a>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <span>兰台 LanTai · 公开数据编目与发布</span>
+  <span><a href="#preview">数据预览</a> · <a href="#">使用说明</a> · <a href="#">控制台</a></span>
+</div></footer>
+
+<script>
+  (function () {
+    "use strict";
+    var BASE = "https://lantai.test.fengcy.cloud";
+
+    var DATA = {
+      "demo-population": {
+        title: "示例：人口统计", schema: "1.0.0", version: "v1", updated: "2026-10-15 17:27",
+        fields: [
+          { name: "region", title: "地区", type: "string", required: true },
+          { name: "population", title: "人口", type: "number", required: true }
+        ],
+        rows: [
+          { region: "浙江", population: 65400000 },
+          { region: "江苏", population: 85150000 },
+          { region: "广东", population: 126012510 }
+        ]
+      },
+      "demo-transport": {
+        title: "示例：交通流量", schema: "2.1.0", version: "v4", updated: "2026-10-14 09:02",
+        fields: [
+          { name: "route", title: "线路", type: "string", required: true },
+          { name: "volume", title: "客流量", type: "number", required: true },
+          { name: "level", title: "拥挤度", type: "string", required: false }
+        ],
+        rows: [
+          { route: "地铁 1 号线", volume: 1284000, level: "拥挤" },
+          { route: "地铁 2 号线", volume: 962000, level: "较挤" },
+          { route: "公交 12 路", volume: 38600, level: "正常" }
+        ]
+      },
+      "demo-budget": {
+        title: "示例：财政预算", schema: "1.4.2", version: "v2", updated: "2026-10-12 15:41",
+        fields: [
+          { name: "department", title: "部门", type: "string", required: true },
+          { name: "amount", title: "金额（万元）", type: "number", required: true },
+          { name: "year", title: "年度", type: "number", required: true, noGroup: true }
+        ],
+        rows: [
+          { department: "教育", amount: 186000, year: 2026 },
+          { department: "卫生", amount: 142500, year: 2026 },
+          { department: "交通", amount: 98000, year: 2026 }
+        ]
+      }
+    };
+
+    var HL = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],:])/g;
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function highlightJSON(text) {
+      var out = "", last = 0, m;
+      HL.lastIndex = 0;
+      m = HL.exec(text);
+      while (m) {
+        out += esc(text.slice(last, m.index));
+        if (m[1] !== undefined) {
+          out += '<span class="' + (m[2] ? "tk-key" : "tk-str") + '">' + esc(m[1]) + "</span>";
+          if (m[2]) out += '<span class="tk-pun">' + esc(m[2]) + "</span>";
+        } else if (m[3]) out += '<span class="tk-num">' + esc(m[3]) + "</span>";
+        else if (m[4]) out += '<span class="tk-num">' + esc(m[4]) + "</span>";
+        else if (m[5]) out += '<span class="tk-pun">' + esc(m[5]) + "</span>";
+        last = HL.lastIndex;
+        m = HL.exec(text);
+      }
+      return out + esc(text.slice(last));
+    }
+
+    /* 首屏数据片段 */
+    var heroRows = JSON.stringify(DATA["demo-population"].rows.slice(0, 2), null, 2);
+    document.getElementById("heroSnip").innerHTML = highlightJSON(heroRows);
+
+    /* 数据目录：搜索 + 整行点击 */
+    var q = document.getElementById("q");
+    var rows = Array.prototype.slice.call(document.querySelectorAll("#rows tr"));
+    var count = document.getElementById("count");
+    var emptyEl = null;
+    function filterRows() {
+      var term = (q.value || "").trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (tr) {
+        var hit = !term || (tr.getAttribute("data-search") || "").toLowerCase().indexOf(term) !== -1;
+        tr.hidden = !hit;
+        if (hit) shown++;
+      });
+      count.textContent = term ? "命中 " + shown + " / " + rows.length + " 个数据集" : "共 " + rows.length + " 个数据集";
+      var tbody = document.getElementById("rows");
+      if (shown === 0) {
+        if (!emptyEl) {
+          emptyEl = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 6; td.className = "empty";
+          td.textContent = "没有匹配的数据集，换个关键词试试。";
+          emptyEl.appendChild(td);
+        }
+        tbody.appendChild(emptyEl);
+      } else if (emptyEl && emptyEl.parentNode) {
+        emptyEl.parentNode.removeChild(emptyEl);
+      }
+    }
+    q.addEventListener("input", filterRows);
+
+    /* 数据预览 */
+    var current = "demo-population";
+    var view = "table";
+    var pvTitle = document.getElementById("pv-title");
+    var pvMeta = document.getElementById("pv-meta");
+    var pvFields = document.getElementById("pv-fields");
+    var pvBody = document.getElementById("pv-body");
+    var pvPath = document.getElementById("pv-path");
+    var segTable = document.getElementById("seg-table");
+    var segJson = document.getElementById("seg-json");
+
+    function renderPreview() {
+      var d = DATA[current];
+      pvTitle.textContent = d.title;
+      pvMeta.textContent = "Schema " + d.schema + " · " + d.version + " · " + d.updated;
+      pvPath.textContent = "/" + current + "/latest.json";
+      pvCopy.setAttribute("data-copy", BASE + "/" + current + "/latest.json");
+
+      pvFields.textContent = "";
+      d.fields.forEach(function (f) {
+        var el = document.createElement("span");
+        el.className = "fchip";
+        var b = document.createElement("b"); b.textContent = f.title || f.name;
+        var ty = document.createElement("span"); ty.className = "ty"; ty.textContent = f.type;
+        el.appendChild(b); el.appendChild(ty);
+        if (f.required) { var r = document.createElement("span"); r.className = "req"; r.textContent = "必填"; el.appendChild(r); }
+        pvFields.appendChild(el);
+      });
+
+      pvBody.textContent = "";
+      if (view === "json") {
+        var pre = document.createElement("pre");
+        pre.className = "jsonview";
+        pre.innerHTML = highlightJSON(JSON.stringify(d.rows, null, 2));
+        pvBody.appendChild(pre);
+      } else {
+        var t = document.createElement("table");
+        var thead = document.createElement("thead");
+        var htr = document.createElement("tr");
+        d.fields.forEach(function (f) {
+          var th = document.createElement("th"); th.scope = "col"; th.textContent = f.title || f.name; htr.appendChild(th);
+        });
+        thead.appendChild(htr); t.appendChild(thead);
+        var tb = document.createElement("tbody");
+        d.rows.forEach(function (row) {
+          var tr = document.createElement("tr");
+          d.fields.forEach(function (f) {
+            var td = document.createElement("td");
+            var v = row[f.name];
+            td.textContent = typeof v === "number" ? (f.noGroup ? String(v) : v.toLocaleString("zh-CN")) : String(v);
+            if (f.type === "number") td.className = "num";
+            tr.appendChild(td);
+          });
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        pvBody.appendChild(t);
+      }
+      segTable.setAttribute("aria-pressed", view === "table" ? "true" : "false");
+      segJson.setAttribute("aria-pressed", view === "json" ? "true" : "false");
+    }
+
+    Array.prototype.slice.call(document.querySelectorAll("#dsnav button")).forEach(function (b) {
+      b.addEventListener("click", function () {
+        current = b.getAttribute("data-slug");
+        Array.prototype.slice.call(document.querySelectorAll("#dsnav button")).forEach(function (x) {
+          x.setAttribute("aria-current", x === b ? "true" : "false");
+        });
+        renderPreview();
+      });
+    });
+    segTable.addEventListener("click", function () { view = "table"; renderPreview(); });
+    segJson.addEventListener("click", function () { view = "json"; renderPreview(); });
+
+    var pvCopy = document.getElementById("pv-copy");
+    pvCopy.addEventListener("click", function () {
+      var text = pvCopy.getAttribute("data-copy") || "";
+      var done = function () {
+        var old = pvCopy.textContent;
+        pvCopy.textContent = "已复制"; pvCopy.classList.add("done");
+        setTimeout(function () { pvCopy.textContent = old; pvCopy.classList.remove("done"); }, 1400);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done); else done();
+    });
+
+    /* 目录行 → 预览该数据集 */
+    rows.forEach(function (tr) {
+      tr.addEventListener("click", function () {
+        var slug = tr.getAttribute("data-slug");
+        var btn = document.querySelector('#dsnav button[data-slug="' + slug + '"]');
+        if (btn) btn.click();
+        document.getElementById("preview").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    renderPreview();
+  })();
+</script>
+</body>
+</html>

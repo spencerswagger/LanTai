@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#080a0f" />
   <title>跨数据集搜索 · 兰台 LanTai</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -18,8 +17,8 @@
         <p class="eyebrow">检索</p>
         <h1>跨数据集搜索</h1>
         <p class="lede">
-          在静态索引 <code>/search/index.json</code> 上，按数据集 slug、标题与字段元数据
-          （字段名 / 标题 / 类型）过滤。索引仅收录字段元数据，不包含任何 payload 值。
+          在静态索引 <code>/search/index.json</code> 上，按数据集名称、字段与数据内容过滤。
+          索引收录数据集名称、字段元数据（字段名 / 标题 / 类型）以及数据正文中的文本值。
         </p>
       </section>
 
@@ -96,7 +95,7 @@
           results.appendChild(
             LT.emptyState(
               "还没有可搜索的数据集",
-              "数据目录为空。管理员发布数据集后，其字段元数据会进入搜索索引。",
+              "数据目录为空。管理员发布数据集后，其字段与数据内容会进入搜索索引。",
               LT.el("a", { class: "btn btn--sm", href: "/", text: "返回数据目录" }),
             ),
           );

@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#080a0f" />
+<title>兰台 · 首页 v5（搜索优先 · 手风琴预览）</title>
+<style>
+  :root{
+    --bg:#080a0f; --card:#101725; --card2:#141c2c;
+    --ink:#eaeff7; --ink2:#a3aebf; --ink3:#6b7585;
+    --line:#1d2635; --line2:#28344a;
+    --cyan:#22d3ee; --blue:#38bdf8; --violet:#8b5cf6; --ok:#34d399;
+    --maxw:1680px; --colw:920px;
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;background:
+      radial-gradient(900px 460px at 50% -12%,rgba(34,211,238,.13),transparent 62%),
+      radial-gradient(720px 420px at 10% 2%,rgba(139,92,246,.10),transparent 60%);}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 40px}
+  @media(max-width:720px){.wrap{padding:0 20px}}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:10px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* 顶栏：只出现英文 logotype 一次 */
+  header.top{position:relative;z-index:2;border-bottom:1px solid var(--line)}
+  .top .wrap{display:flex;align-items:center;gap:20px;min-height:64px}
+  .logo{font-family:var(--mono);font-weight:700;font-size:.82rem;letter-spacing:.44em;padding-left:.1em}
+  .logo .a{background:linear-gradient(180deg,#eafcff,#38bdf8 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .logo .b{color:#f2f6ff}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .link{color:var(--ink2);font-weight:600;font-size:.9rem;padding:8px 12px;border-radius:9px}
+  .link:hover{background:var(--card);color:var(--ink)}
+  .who{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ink2);padding:6px 11px;border:1px solid var(--line);border-radius:999px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+
+  main{position:relative;z-index:1;flex:1}
+  .stage{max-width:var(--colw);margin:0 auto;padding:62px 24px 40px;text-align:center}
+  @media(max-width:720px){.stage{padding-top:40px}}
+
+  /* 中文只出现这一次：兰=兰色渐变，台=白 */
+  h1{font-size:clamp(3rem,1.9rem+4.4vw,5.4rem);line-height:1;letter-spacing:.12em;margin:0 0 18px;font-weight:800;padding-left:.12em}
+  /* 整词一次性渐变（兰色→白），而不是每个字一种颜色 */
+  h1 .w{background:linear-gradient(96deg,#35b8f6 0%,#79d3ff 32%,#c9ecff 62%,#ffffff 94%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .naming{font-size:clamp(.98rem,.94rem+.3vw,1.1rem);color:var(--ink2);margin:0 auto 30px;line-height:1.8}
+
+  .box{position:relative;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:0 18px;height:70px;transition:border-color .15s,box-shadow .15s}
+  .box:focus-within{border-color:var(--cyan);box-shadow:0 0 0 5px rgba(34,211,238,.13)}
+  .box svg{flex:none;color:var(--ink3)}
+  .box input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:1.14rem}
+  .box input::placeholder{color:var(--ink3)}
+  .kbd{flex:none;font-family:var(--mono);font-size:.74rem;color:var(--ink3);border:1px solid var(--line2);border-radius:7px;padding:3px 7px}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0 0}
+  .chips button{background:var(--card);border:1px solid var(--line2);color:var(--ink2);font:inherit;font-size:.82rem;padding:6px 12px;border-radius:999px;cursor:pointer}
+  .chips button:hover{border-color:var(--cyan);color:var(--ink)}
+  .chips .lb{color:var(--ink3);font-size:.82rem;align-self:center;margin-right:2px}
+
+  .cta{display:flex;gap:12px;justify-content:center;margin:22px 0 0;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:12px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit;font-weight:650;font-size:.95rem;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#3a4a66}
+  .btn.primary{background:linear-gradient(135deg,#22d3ee,#8b5cf6);border-color:transparent;color:#04131b}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--ink2);padding:12px 10px}
+  .btn.ghost:hover{background:var(--card);border-color:var(--line2);color:var(--ink)}
+
+  .meta-row{display:flex;justify-content:space-between;gap:16px;margin:22px 2px 0;color:var(--ink3);font-size:.82rem;flex-wrap:wrap;text-align:left}
+  .meta-row a{color:var(--cyan);font-weight:600}
+
+  .results{margin-top:12px;text-align:left;border:1px solid var(--line);border-radius:14px;background:#0b0f16;overflow:hidden}
+  .results:empty{display:none}
+  .grp{padding:12px 18px 4px;font-size:.72rem;letter-spacing:.14em;color:var(--ink3);font-weight:700;background:rgba(255,255,255,.015)}
+  .grp:not(:first-child){border-top:1px solid var(--line)}
+
+  .opt{display:block;border-left:2px solid transparent}
+  .opt + .opt{border-top:1px solid rgba(255,255,255,.045)}
+  .opt__row{display:flex;align-items:center;gap:14px;padding:13px 18px;cursor:pointer}
+  .opt[aria-selected="true"]{background:rgba(34,211,238,.06);border-left-color:var(--cyan)}
+  .opt__row:hover{background:rgba(255,255,255,.03)}
+  .opt .ic{width:26px;height:26px;flex:none;border-radius:8px;background:var(--card2);border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:.7rem;color:var(--ink3)}
+  .opt .tx{min-width:0;flex:1 1 auto}
+  .opt .t{display:block;font-weight:650}
+  .opt .d{display:block;color:var(--ink3);font-family:var(--mono);font-size:.78rem;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .opt .tail{margin-left:auto;color:var(--ink3);font-size:.82rem;white-space:nowrap;flex:none}
+  .hl{color:var(--cyan);font-weight:750;background:rgba(34,211,238,.12);border-radius:3px;padding:0 2px}
+  .why{color:var(--cyan);font-size:.74rem;border:1px solid rgba(34,211,238,.35);border-radius:999px;padding:1px 8px;margin-left:8px;white-space:nowrap}
+
+  /* 手风琴：折叠体 */
+  .opt__body{max-height:0;overflow:hidden;opacity:0;transition:max-height .3s ease,opacity .22s ease}
+  .opt.is-open .opt__body{max-height:560px;opacity:1}
+  .opt__inner{margin:2px 18px 18px 58px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+  .opt__cap{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink3);font-size:.78rem;font-family:var(--mono)}
+  .opt__cap b{color:var(--ink2);font-family:var(--sans);font-weight:650;font-size:.82rem}
+  .opt__foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);color:var(--ink3);font-size:.78rem;flex-wrap:wrap}
+  .opt__foot code{font-family:var(--mono);color:#bfe9f5}
+  .copy{border:1px solid var(--line2);background:var(--card2);color:var(--ink2);border-radius:8px;padding:5px 10px;font:inherit;font-size:.76rem;font-weight:600;cursor:pointer;margin-left:auto}
+  .copy:hover{border-color:#3a4a66;color:var(--ink)}
+  .copy.done{color:var(--ok);border-color:rgba(52,211,153,.4)}
+  table.pv{width:100%;border-collapse:collapse;font-size:.86rem}
+  table.pv th,table.pv td{padding:9px 14px;text-align:left;border-bottom:1px solid var(--line)}
+  table.pv th{font-size:.72rem;letter-spacing:.08em;color:var(--ink3);font-weight:700;background:rgba(255,255,255,.015)}
+  table.pv tr:last-child td{border-bottom:0}
+  table.pv td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink2)}
+  table.pv.kv th{width:38%;font-family:var(--mono);font-weight:600;color:var(--ink2);background:none}
+  .nohit{padding:26px 18px;color:var(--ink2);text-align:center}
+
+  footer{position:relative;z-index:1;border-top:1px solid var(--line);padding:20px 0 34px;color:var(--ink3);font-size:.82rem}
+  footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  footer a:hover{color:var(--ink)}
+
+  @media(max-width:720px){
+    .box{height:60px}
+    .opt__inner{margin-left:18px}
+    .opt .tail{display:none}
+  }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="#" aria-label="LANTAI"><span class="a">LAN</span><span class="b">TAI</span></a>
+  <div class="right">
+    <a class="link" href="#">提交数据</a>
+    <a class="link" href="#">控制台</a>
+    <span class="who"><span class="dot"></span>dev@localhost</span>
+  </div>
+</div></header>
+
+<main>
+  <div class="stage">
+    <h1><span class="w">兰台</span></h1>
+    <p class="naming">取自《汉书·百官公卿表》，喻数据典藏之机构；</p>
+
+    <div class="box" role="search">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+      <label class="sr" for="q">搜索数据集、字段与数据内容</label>
+      <input id="q" type="search" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list"
+        placeholder="搜索数据集、字段或数据内容…" autocomplete="off" spellcheck="false" enterkeyhint="search" />
+      <span class="kbd">⌘K</span>
+    </div>
+
+    <div class="chips" id="chips"><span class="lb">试试：</span></div>
+
+    <div class="cta">
+      <a class="btn primary" href="#">提交数据</a>
+      <a class="btn ghost" href="#">取数方式 →</a>
+    </div>
+
+    <div class="meta-row">
+      <span id="scope"></span>
+      <a href="#">读取原始索引 →</a>
+    </div>
+
+    <div class="results" id="results" role="listbox" aria-label="搜索结果"></div>
+  </div>
+</main>
+
+<footer><div class="wrap">
+  <span>公开数据编目与发布</span>
+  <span><a href="#">取数方式</a> · <a href="#">使用说明</a></span>
+</div></footer>
+
+<script>
+  (function () {
+    "use strict";
+
+    /* ---------- 数据（含字段定义与正文，供「搜数据正文 / 表格预览」演示） ---------- */
+    var DATA = [
+      { slug:"demo-population", title:"示例：人口统计", schemaVersion:"1.0.0", dataVersion:"1", updated:"2026-10-15 17:27",
+        fields:[{name:"region",title:"地区",type:"string",required:true},{name:"population",title:"人口",type:"number",required:true}],
+        data:[{region:"浙江",population:65400000},{region:"江苏",population:85150000},{region:"广东",population:126012510}] },
+      { slug:"demo-transport", title:"示例：交通流量", schemaVersion:"2.1.0", dataVersion:"4", updated:"2026-10-14 09:02",
+        fields:[{name:"route",title:"线路",type:"string",required:true},{name:"volume",title:"客流量",type:"number",required:true},{name:"level",title:"拥挤度",type:"string"}],
+        data:[{route:"地铁 1 号线",volume:1284000,level:"拥挤"},{route:"地铁 2 号线",volume:962000,level:"较挤"},{route:"公交 12 路",volume:38600,level:"正常"}] },
+      { slug:"demo-budget", title:"示例：财政预算", schemaVersion:"1.4.2", dataVersion:"2", updated:"2026-10-12 15:41",
+        fields:[{name:"department",title:"部门",type:"string",required:true},{name:"amount",title:"金额（万元）",type:"number",required:true},{name:"year",title:"年度",type:"number",required:true,noGroup:true}],
+        data:[{department:"教育",amount:186000,year:2026},{department:"卫生",amount:142500,year:2026},{department:"交通",amount:98000,year:2026}] },
+      { slug:"demo-region-profile", title:"示例：地区概览", schemaVersion:"1.0.0", dataVersion:"1", updated:"2026-10-10 11:20",
+        fields:[{name:"region",title:"地区",type:"string",required:true},{name:"capital",title:"省会",type:"string",required:true},{name:"gdp",title:"地区生产总值（亿元）",type:"number",required:true},{name:"population",title:"常住人口",type:"number",required:true}],
+        data:{region:"浙江",capital:"杭州",gdp:82553,population:65400000} }
+    ];
+
+    var ACTIONS = [
+      { label:"提交数据", desc:"匿名提交符合 Schema 的内容", kw:"提交 投稿 贡献 上传", href:"#" },
+      { label:"取数方式", desc:"静态 JSON 接口与缓存说明", kw:"取数 接口 api 文档 json 下载 开放", href:"#" },
+      { label:"控制台", desc:"编目、审阅与发布", kw:"控制台 后台 管理 审阅 发布", href:"#" },
+      { label:"使用说明", desc:"读者 / 贡献者 / 运营者指南", kw:"说明 帮助 文档 指南", href:"#" }
+    ];
+
+    var resultsEl = document.getElementById("results");
+    var input = document.getElementById("q");
+    var scopeEl = document.getElementById("scope");
+    var flat = [], openKey = null;
+
+    function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+    function mark(text, term){
+      var e = esc(text);
+      if (!term) return e;
+      var i = e.toLowerCase().indexOf(term.toLowerCase());
+      if (i < 0) return e;
+      return e.slice(0,i) + '<span class="hl">' + e.slice(i, i+term.length) + '</span>' + e.slice(i+term.length);
+    }
+    function cellText(v){ return typeof v === "number" ? String(v) : String(v); }
+    function valuesText(d){ return JSON.stringify(d.data); }
+    function fieldsText(d){ return (d.fields||[]).map(function(f){return f.name+" "+(f.title||"")+" "+f.type;}).join(" "); }
+    function nameText(d){ return d.slug + " " + d.title; }
+    function isRowArray(d){ return Array.isArray(d.data); }
+
+    /* ---------- 结果构建 ---------- */
+    function build(q){
+      var groups = [];
+      var term = (q||"").trim().toLowerCase();
+
+      var ds = [];
+      DATA.forEach(function(d){
+        var hitName = term && nameText(d).toLowerCase().indexOf(term) !== -1;
+        var hitField = term && fieldsText(d).toLowerCase().indexOf(term) !== -1;
+        var hitData = term && valuesText(d).toLowerCase().indexOf(term) !== -1;
+        if (!term || hitName || hitData) {
+          ds.push({ d:d, why: !term ? "" : (hitName ? "名称" : "数据内容") });
+        } else if (hitField) {
+          ds.push({ d:d, why:"字段" });
+        }
+      });
+      if (ds.length) groups.push({ name:"数据集", kind:"ds", items: ds });
+
+      if (term) {
+        var fld = [];
+        DATA.forEach(function(d){
+          (d.fields||[]).forEach(function(f){
+            if ((f.name+" "+(f.title||"")+" "+f.type+" "+d.slug).toLowerCase().indexOf(term) !== -1) {
+              fld.push({ d:d, f:f });
+            }
+          });
+        });
+        if (fld.length) groups.push({ name:"字段", kind:"field", items: fld.slice(0,12) });
+
+        var act = ACTIONS.filter(function(a){ return (a.label+" "+a.desc+" "+a.kw).toLowerCase().indexOf(term) !== -1; });
+        if (act.length) groups.push({ name:"操作", kind:"act", items: act });
+      } else {
+        groups.push({ name:"常用操作", kind:"act", items: ACTIONS });
+      }
+      return { groups: groups, q: term };
+    }
+
+    /* ---------- 表格预览 ---------- */
+    function preview(d, term){
+      var wrap = document.createElement("div");
+      var cap = document.createElement("div");
+      cap.className = "opt__cap";
+      var rows = isRowArray(d) ? d.data.length : Object.keys(d.data).length;
+      cap.innerHTML = "<b>" + esc(isRowArray(d) ? "明细表" : "详情表") + "</b> · 最新快照 v" + esc(d.dataVersion) +
+        " · " + (isRowArray(d) ? rows + " 行" : "1 条记录") + " · Schema " + esc(d.schemaVersion);
+      wrap.appendChild(cap);
+
+      var t = document.createElement("table");
+      t.className = isRowArray(d) ? "pv" : "pv kv";
+      if (isRowArray(d)) {
+        var thead = document.createElement("thead"), htr = document.createElement("tr");
+        d.fields.forEach(function(f){ var th=document.createElement("th"); th.scope="col"; th.textContent=f.title||f.name; htr.appendChild(th); });
+        thead.appendChild(htr); t.appendChild(thead);
+        var tb = document.createElement("tbody");
+        d.data.forEach(function(row){
+          var tr = document.createElement("tr");
+          d.fields.forEach(function(f){
+            var td = document.createElement("td");
+            var v = row[f.name];
+            if (f.type === "number") { td.className="num"; td.textContent = (f.noGroup ? String(v) : Number(v).toLocaleString("zh-CN")); }
+            else td.innerHTML = mark(cellText(v), term);
+            tr.appendChild(td);
+          });
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+      } else {
+        var tb2 = document.createElement("tbody");
+        d.fields.forEach(function(f){
+          var tr = document.createElement("tr");
+          var th = document.createElement("th"); th.scope="row"; th.textContent = f.title || f.name;
+          var td = document.createElement("td");
+          var v = d.data[f.name];
+          if (f.type === "number") { td.className="num"; td.textContent = (f.noGroup ? String(v) : Number(v).toLocaleString("zh-CN")); }
+          else td.innerHTML = mark(cellText(v), term);
+          tr.appendChild(th); tr.appendChild(td); tb2.appendChild(tr);
+        });
+        t.appendChild(tb2);
+      }
+      wrap.appendChild(t);
+
+      var foot = document.createElement("div");
+      foot.className = "opt__foot";
+      foot.innerHTML = '<code>/' + esc(d.slug) + '/latest.json</code>' +
+        '<button class="copy" type="button" data-copy="https://lantai.test.fengcy.cloud/' + esc(d.slug) + '/latest.json">复制地址</button>';
+      wrap.appendChild(foot);
+      return wrap;
+    }
+
+    function fieldPreview(d, f, term){
+      var wrap = document.createElement("div");
+      var cap = document.createElement("div");
+      cap.className = "opt__cap";
+      cap.innerHTML = "<b>字段详情</b> · " + esc(d.slug);
+      wrap.appendChild(cap);
+      var t = document.createElement("table");
+      t.className = "pv kv";
+      var tb = document.createElement("tbody");
+      var rows = [["字段", f.name], ["标题", f.title || "—"], ["类型", f.type], ["是否必填", f.required ? "是" : "否"], ["所属数据集", d.title]];
+      rows.forEach(function(r){
+        var tr = document.createElement("tr");
+        var th = document.createElement("th"); th.scope="row"; th.textContent = r[0];
+        var td = document.createElement("td"); td.innerHTML = mark(r[1], term);
+        tr.appendChild(th); tr.appendChild(td); tb.appendChild(tr);
+      });
+      t.appendChild(tb); wrap.appendChild(t);
+      return wrap;
+    }
+
+    /* ---------- 渲染 ---------- */
+    function render(){
+      var out = build(input.value);
+      flat = []; openKey = null;
+      resultsEl.textContent = "";
+      if (!out.groups.length) {
+        var d = document.createElement("div"); d.className="nohit";
+        d.textContent = "没有匹配结果。试试「浙江 / 人口 / 字段 / 提交」。";
+        resultsEl.appendChild(d);
+        scopeEl.textContent = "0 个结果 · 搜索范围：数据集名称、字段与数据内容";
+        input.removeAttribute("aria-activedescendant");
+        return;
+      }
+      out.groups.forEach(function(g){
+        var h = document.createElement("div"); h.className="grp"; h.textContent = g.name; resultsEl.appendChild(h);
+        g.items.forEach(function(it){
+          var idx = flat.length;
+          flat.push({ group:g, it:it });
+          var row = document.createElement("div");
+          row.className = "opt";
+          row.setAttribute("role","option");
+          row.id = "opt-" + idx;
+          row.setAttribute("aria-selected","false");
+          var key = g.kind + ":" + idx;
+          row.dataset.key = key;
+
+          var expandable = g.kind !== "act";
+          var title, badge = "", dsc, icon, tail;
+          if (g.kind === "ds") {
+            var dd = it.d;
+            icon = "DS"; title = dd.title;
+            if (it.why) badge = '<span class="why">' + esc(it.why) + "命中</span>";
+            dsc = dd.slug + " · " + (dd.fields||[]).length + " 个字段 · " + (isRowArray(dd) ? "明细表 " + dd.data.length + " 行" : "详情表");
+            tail = "Schema " + dd.schemaVersion;
+          } else if (g.kind === "field") {
+            icon = "≡"; title = it.f.title || it.f.name;
+            badge = '<span class="why">字段</span>';
+            dsc = it.f.name + " · " + it.f.type + " · " + it.d.slug;
+            tail = it.d.title;
+          } else {
+            icon = "→"; title = it.label; dsc = it.desc; tail = "打开";
+          }
+
+          var hrow = document.createElement("div");
+          hrow.className = "opt__row";
+          hrow.innerHTML = '<span class="ic">' + esc(icon) + '</span>' +
+            '<span class="tx"><span class="t">' + mark(title, out.q) + badge + '</span>' +
+            '<span class="d">' + mark(dsc, out.q) + '</span></span>' +
+            '<span class="tail">' + esc(tail) + "</span>";
+          row.appendChild(hrow);
+
+          if (expandable) {
+            var body = document.createElement("div");
+            body.className = "opt__body";
+            body.setAttribute("aria-hidden","true");
+            row.appendChild(body);
+          }
+
+          hrow.addEventListener("click", function(){ select(idx, true); });
+          resultsEl.appendChild(row);
+        });
+      });
+      var n = flat.length;
+      scopeEl.textContent = (out.q ? "命中 " + n + " 项" : "共 " + DATA.length + " 个数据集") +
+        " · 搜索范围：数据集名称、字段与数据内容";
+      select(0, false);   // 默认选中第一个并展开
+    }
+
+    function select(i, scroll){
+      var opts = resultsEl.querySelectorAll(".opt");
+      if (!opts.length) return;
+      i = Math.max(0, Math.min(i, opts.length - 1));
+      var term = (input.value || "").trim();
+      opts.forEach(function(o, j){
+        var on = j === i;
+        o.setAttribute("aria-selected", on ? "true" : "false");
+        if (!o.querySelector(".opt__body")) return;
+        if (on) {
+          var entry = flat[j];
+          var body = o.querySelector(".opt__body");
+          body.textContent = "";
+          var inner = document.createElement("div");
+          inner.className = "opt__inner";
+          if (entry.group.kind === "ds") inner.appendChild(preview(entry.it.d, term));
+          else if (entry.group.kind === "field") inner.appendChild(fieldPreview(entry.it.d, entry.it.f, term));
+          body.appendChild(inner);
+          o.classList.add("is-open");
+          body.setAttribute("aria-hidden","false");
+        } else {
+          o.classList.remove("is-open");
+          o.querySelector(".opt__body").setAttribute("aria-hidden","true");
+        }
+      });
+      input.setAttribute("aria-activedescendant", opts[i].id);
+      if (scroll && opts[i].scrollIntoView) opts[i].scrollIntoView({ block:"nearest" });
+    }
+    function activeIndex(){
+      var opts = resultsEl.querySelectorAll(".opt");
+      for (var j=0;j<opts.length;j++) if (opts[j].getAttribute("aria-selected")==="true") return j;
+      return 0;
+    }
+    function openCurrent(){
+      var entry = flat[activeIndex()];
+      if (!entry) return;
+      if (entry.group.kind === "act") location.hash = "action:" + entry.it.label;
+      else location.hash = "dataset:" + (entry.group.kind === "ds" ? entry.it.d.slug : entry.it.d.slug + "/" + entry.it.f.name);
+    }
+
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", function(e){
+      if (e.key === "ArrowDown") { e.preventDefault(); select(activeIndex()+1, true); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); select(activeIndex()-1, true); }
+      else if (e.key === "Enter") { e.preventDefault(); openCurrent(); }
+      else if (e.key === "Escape") { input.value = ""; render(); }
+    });
+    document.addEventListener("keydown", function(e){
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); input.focus(); input.select(); }
+    });
+    document.addEventListener("click", function(e){
+      var b = e.target.closest(".copy");
+      if (!b) return;
+      var text = b.getAttribute("data-copy");
+      var done = function(){ var o = b.textContent; b.textContent="已复制"; b.classList.add("done"); setTimeout(function(){ b.textContent=o; b.classList.remove("done"); }, 1400); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done); else done();
+    });
+    document.getElementById("chips").addEventListener("click", function(e){
+      var b = e.target.closest("button[data-q]");
+      if (!b) return;
+      input.value = b.getAttribute("data-q");
+      render();
+      input.focus();
+    });
+
+    /* 「试试」提示词不写死：从字段标题与数据正文里推导 */
+    function buildChips(){
+      var host = document.getElementById("chips");
+      var terms = [];
+      function add(t){
+        t = (t == null ? "" : String(t)).trim();
+        if (!t || t.length > 6 || terms.indexOf(t) !== -1 || terms.length >= 5) return;
+        terms.push(t);
+      }
+      for (var i = 0; i < DATA.length && terms.length < 3; i++) {
+        var fs = DATA[i].fields || [];
+        for (var j = 0; j < fs.length && terms.length < 3; j++) add(fs[j].title || fs[j].name);
+      }
+      DATA.forEach(function(d){
+        var vals = Array.isArray(d.data)
+          ? d.data.reduce(function(acc, r){ return acc.concat(Object.keys(r).map(function(k){ return r[k]; })); }, [])
+          : Object.keys(d.data).map(function(k){ return d.data[k]; });
+        for (var k = 0; k < vals.length; k++) {
+          if (typeof vals[k] === "string") { add(vals[k]); break; }
+        }
+      });
+      terms.forEach(function(t){
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("data-q", t);
+        b.textContent = t;
+        host.appendChild(b);
+      });
+    }
+
+    buildChips();
+    render();
+    input.focus();
+  })();
+</script>
+</body>
+</html>

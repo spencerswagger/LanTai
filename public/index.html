@@ -1,231 +1,438 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)" />
-  <title>公开数据目录 · 兰台 LanTai</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <style>
-    #catalog .card__head .searchbar { width: min(320px, 56vw); }
-    #catalog-filter { width: 100%; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#080a0f" />
+<title>兰台 · 公开数据目录</title>
+<link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <a class="skip-link" href="#main">跳到主要内容</a>
-  <header class="topbar" data-lt-topbar></header>
+<a class="skip-link" href="#stage">跳到主要内容</a>
 
-  <main id="main" tabindex="-1">
-    <div class="container stack-lg">
-      <section class="hero">
-        <p class="eyebrow">公开数据 · 不可变快照</p>
-        <h1>公开数据目录</h1>
-        <p class="hero__lede">
-          兰台以不可变的 JSON Schema 编目公开数据集：任何人都可匿名贡献数据，
-          经管理员审阅后以不可变快照发布。读取完全走静态发布物，零计算、可缓存。
-        </p>
-        <div class="hero__actions">
-          <a class="btn btn--primary" href="#catalog">浏览目录</a>
-          <a class="btn" href="/submit">提交数据</a>
-          <a class="btn btn--ghost" href="/docs/">开放接口</a>
-        </div>
+<header class="topbar">
+  <div class="topbar__inner container">
+    <a class="logo" href="/" aria-label="LANTAI 首页"><span class="a">LAN</span><span class="b">TAI</span></a>
+    <nav class="topnav" aria-label="主导航">
+      <a href="/docs/">取数方式</a>
+      <a href="/submit">提交数据</a>
+      <a href="/admin">控制台</a>
+      <span class="authchip" data-state="pending" id="authchip"><span class="authchip__dot"></span><span class="authchip__label">检查登录…</span></span>
+    </nav>
+    <button class="btn btn--ghost btn--sm navtoggle" type="button" aria-label="切换导航菜单" aria-expanded="false">菜单</button>
+  </div>
+</header>
 
-        <div class="howto">
-          <div class="howto__item">
-            <div class="howto__num">01</div>
-            <h3>浏览与取用</h3>
-            <p class="muted">在数据目录里查看已发布的数据集，按它冻结的 Schema 消费静态 JSON 快照。</p>
-            <p><a href="#catalog">浏览数据目录 →</a></p>
-          </div>
-          <div class="howto__item">
-            <div class="howto__num">02</div>
-            <h3>匿名提交数据</h3>
-            <p class="muted">选择数据集，粘贴符合其冻结 Schema 的 JSON 内容即可匿名提交，无需账号。</p>
-            <p><a href="/submit">提交数据 →</a></p>
-          </div>
-          <div class="howto__item">
-            <div class="howto__num">03</div>
-            <h3>管理员审阅发布</h3>
-            <p class="muted">管理员在控制台审阅提交，确认无误后发布为不可变快照并更新数据目录。</p>
-            <p><a href="/docs/operator.html">了解运营流程 →</a></p>
-          </div>
-        </div>
-      </section>
+<main>
+  <div class="container">
+    <div class="stage" id="stage">
+      <h1 class="home-title"><span class="w">兰台</span></h1>
+      <p class="naming">取自《汉书·百官公卿表》，喻数据典藏之机构</p>
 
-      <section id="catalog" aria-labelledby="catalog-title">
-        <div class="card card--flush">
-          <div class="card__head">
-            <h2 id="catalog-title">数据目录</h2>
-            <div class="searchbar">
-              <label class="sr-only" for="catalog-filter">按 slug 或标题筛选数据集</label>
-              <input id="catalog-filter" class="input" type="search" placeholder="按 slug 或标题筛选…" autocomplete="off" />
-            </div>
-          </div>
-          <div id="catalog-body" role="status" aria-live="polite"></div>
-        </div>
-      </section>
+      <div class="cta">
+        <a class="btn btn--primary" href="/submit">提交数据</a>
+        <a class="btn" href="/docs/">取数方式</a>
+      </div>
 
-      <section class="card" aria-labelledby="catalog-note-title">
-        <h2 id="catalog-note-title" style="margin-top:0">数据目录从何而来</h2>
-        <p class="muted">
-          数据目录是一份机器可读的静态索引 <code>/index.json</code>，逐条列出每个数据集的 slug、标题、
-          当前 Schema 版本与更新时间。它由 CDN 直读、不经计算，程序可直接取用。
-        </p>
-        <p><a href="/docs/">查看开放接口与字段说明 →</a></p>
-      </section>
+      <search class="box">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <label class="sr-only" for="q">搜索数据集、字段与数据内容</label>
+        <input id="q" type="search" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list"
+          placeholder="搜索数据集、字段或数据内容…" autocomplete="off" spellcheck="false" enterkeyhint="search" />
+        <span class="kbd">⌘K</span>
+      </search>
+
+      <div class="chips" id="chips"><span class="lb">试试：</span></div>
+
+      <div class="meta-row">
+        <span id="scope">正在加载数据目录…</span>
+        <a href="/index.json">读取原始索引 index.json →</a>
+      </div>
+
+      <div class="results" id="results" role="listbox" aria-label="搜索结果"></div>
     </div>
-  </main>
+  </div>
+</main>
 
-  <footer class="sitefoot" data-lt-footer></footer>
+<footer class="sitefoot">
+  <div class="container sitefoot__row">
+    <span>公开数据编目与发布</span>
+    <span><a href="/docs/">取数方式</a> · <a href="/docs/reader.html">使用说明</a> · <a href="/search">搜索</a></span>
+  </div>
+</footer>
 
-  <script src="/app.js"></script>
-  <script>
-    (() => {
-      "use strict";
-      LT.mountShell({ active: "catalog" });
+<script src="/app.js"></script>
+<script>
+  (() => {
+    "use strict";
 
-      var bodyEl = LT.$("#catalog-body");
-      var filterEl = LT.$("#catalog-filter");
-      var datasets = [];
-      var state = "loading";
+    const ACTIONS = [
+      { label: "提交数据", desc: "匿名提交符合 Schema 的内容", kw: "提交 投稿 贡献 上传", href: "/submit" },
+      { label: "取数方式", desc: "静态 JSON 接口与缓存说明", kw: "取数 接口 api 文档 json 下载 开放", href: "/docs/" },
+      { label: "查询进度", desc: "凭追踪令牌查看提交状态", kw: "查询 进度 状态 令牌 token", href: "/status" },
+      { label: "控制台", desc: "编目、审阅与发布", kw: "控制台 后台 管理 审阅 发布", href: "/admin" },
+      { label: "使用说明", desc: "读者 / 贡献者 / 运营者指南", kw: "说明 帮助 文档 指南", href: "/docs/reader.html" }
+    ];
 
-      function renderSkeleton() {
-        state = "loading";
-        filterEl.disabled = true;
-        LT.clear(bodyEl);
-        bodyEl.appendChild(LT.el("div", { class: "card__body" }, [LT.skeleton(5)]));
-      }
+    let docs = [];          // 来自 /search/index.json：{ slug,title,schemaVersion,dataVersion,fields,terms }
+    const resultsEl = document.getElementById("results");
+    const input = document.getElementById("q");
+    const scopeEl = document.getElementById("scope");
+    const chipsEl = document.getElementById("chips");
+    let flat = [];
+    const snapshotCache = {};
 
-      function renderError() {
-        state = "error";
-        filterEl.disabled = true;
-        LT.clear(bodyEl);
-        bodyEl.appendChild(
-          LT.el("div", { class: "card__body" }, [
-            LT.emptyState(
-              "数据目录暂不可用",
-              "无法读取 /index.json，可能是网络问题或发布物尚未生成。",
-              LT.el("button", {
-                class: "btn btn--sm",
-                type: "button",
-                text: "重试",
-                onclick: load,
-              }),
-            ),
-          ]),
-        );
-      }
+    /* ---------- 小工具 ---------- */
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function mark(text, term) {
+      const e = esc(text);
+      if (!term) return e;
+      const i = e.toLowerCase().indexOf(term.toLowerCase());
+      if (i < 0) return e;
+      return `${e.slice(0, i)}<span class="hl">${e.slice(i, i + term.length)}</span>${e.slice(i + term.length)}`;
+    }
+    function nameText(d) { return `${d.slug} ${d.title || ""}`; }
+    function fieldsText(d) { return (d.fields || []).map((f) => `${f.name} ${f.title || ""} ${f.type || ""}`).join(" "); }
+    function termsText(d) { return (d.terms || []).join(" "); }
+    function isRowArray(data) { return Array.isArray(data); }
 
-      function schemaTag(version) {
-        return LT.el("span", {
-          class: "tag tag--frozen tag--plain mono",
-          text: version ? `Schema ${version}` : "Schema —",
+    /* ---------- 结果构建 ---------- */
+    function build(term) {
+      const groups = [];
+      const ds = [];
+      docs.forEach((d) => {
+        if (!term) { ds.push({ d: d, why: "" }); return; }
+        if (nameText(d).toLowerCase().indexOf(term) !== -1) ds.push({ d: d, why: "名称" });
+        else if (termsText(d).toLowerCase().indexOf(term) !== -1) ds.push({ d: d, why: "数据内容" });
+        else if (fieldsText(d).toLowerCase().indexOf(term) !== -1) ds.push({ d: d, why: "字段" });
+      });
+      if (ds.length) groups.push({ name: "数据集", kind: "ds", items: ds });
+
+      if (term) {
+        const fld = [];
+        docs.forEach((d) => {
+          (d.fields || []).forEach((f) => {
+            if ((`${f.name} ${f.title || ""} ${f.type || ""}`).toLowerCase().indexOf(term) !== -1) {
+              fld.push({ d: d, f: f });
+            }
+          });
         });
+        if (fld.length) groups.push({ name: "字段", kind: "field", items: fld.slice(0, 12) });
+        const act = ACTIONS.filter((a) => (`${a.label} ${a.desc} ${a.kw}`).toLowerCase().indexOf(term) !== -1);
+        if (act.length) groups.push({ name: "操作", kind: "act", items: act });
+      } else {
+        groups.push({ name: "常用操作", kind: "act", items: ACTIONS });
       }
+      return groups;
+    }
 
-      function buildTable(list) {
-        var tbody = LT.el("tbody");
-        list.forEach((d) => {
-          tbody.appendChild(
-            LT.el("tr", {}, [
-              LT.el("td", {}, [
-                LT.el("a", { class: "mono", href: LT.datasetLink(d.slug), text: d.slug }),
-              ]),
-              LT.el("td", { text: d.title || "—" }),
-              LT.el("td", {}, [schemaTag(d.currentSchemaVersion)]),
-              LT.el("td", {}, [
-                d.currentDataVersion
-                  ? LT.el("span", { class: "tag tag--published", text: "已发布" })
-                  : LT.el("span", { class: "tag tag--frozen", text: "已编目" }),
-                LT.el("div", { class: "faint", text: LT.fmtDateTime(d.updatedAt) }),
-              ]),
-            ]),
-          );
+    /* ---------- 表格预览（按需拉快照） ---------- */
+    function tableFor(doc, data, term) {
+      const wrap = document.createElement("div");
+      const cap = document.createElement("div");
+      cap.className = "opt__cap";
+      const rows = isRowArray(data) ? data.length : Object.keys(data || {}).length;
+      cap.innerHTML = "<b>" + (isRowArray(data) ? "明细表" : "详情表") + "</b> · 最新快照 v" + esc(doc.dataVersion || "—") +
+        " · " + (isRowArray(data) ? `${rows} 行` : "1 条记录") + " · Schema " + esc(doc.schemaVersion || "—");
+      wrap.appendChild(cap);
+
+      const t = document.createElement("table");
+      t.className = isRowArray(data) ? "pv" : "pv kv";
+      const keys = (doc.fields?.length)
+        ? doc.fields.map((f) => f.name)
+        : (isRowArray(data) && data[0] ? Object.keys(data[0]) : Object.keys(data || {}));
+      const titleOf = {};
+      (doc.fields || []).forEach((f) => { titleOf[f.name] = f.title || f.name; });
+
+      if (isRowArray(data)) {
+        const thead = document.createElement("thead");
+        const htr = document.createElement("tr");
+        keys.forEach((k) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = titleOf[k] || k; htr.appendChild(th); });
+        thead.appendChild(htr); t.appendChild(thead);
+        const tb = document.createElement("tbody");
+        data.slice(0, 50).forEach((row) => {
+          const tr = document.createElement("tr");
+          keys.forEach((k) => {
+            const td = document.createElement("td");
+            const v = row ? row[k] : "";
+            if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); }
+            else td.innerHTML = mark(v == null ? "" : v, term);
+            tr.appendChild(td);
+          });
+          tb.appendChild(tr);
         });
-        var head = LT.el("thead", {}, [
-          LT.el("tr", {}, [
-            LT.el("th", { scope: "col", text: "数据集" }),
-            LT.el("th", { scope: "col", text: "标题" }),
-            LT.el("th", { scope: "col", text: "当前 Schema" }),
-            LT.el("th", { scope: "col", text: "状态 / 更新时间" }),
-          ]),
-        ]);
-        var table = LT.el("table", { class: "table" }, [head, tbody]);
-        return LT.el("div", { class: "table-wrap" }, [table]);
+        t.appendChild(tb);
+      } else {
+        const tb2 = document.createElement("tbody");
+        keys.forEach((k) => {
+          const tr = document.createElement("tr");
+          const th = document.createElement("th"); th.scope = "row"; th.textContent = titleOf[k] || k;
+          const td = document.createElement("td");
+          const v = data ? data[k] : "";
+          if (typeof v === "number") { td.className = "num"; td.textContent = v.toLocaleString("zh-CN"); }
+          else td.innerHTML = mark(v == null ? "" : v, term);
+          tr.appendChild(th); tr.appendChild(td); tb2.appendChild(tr);
+        });
+        t.appendChild(tb2);
+      }
+      wrap.appendChild(t);
+
+      const foot = document.createElement("div");
+      foot.className = "opt__foot";
+      foot.innerHTML = '<code>/' + esc(doc.slug) + '/latest.json</code>' +
+        '<button class="copy" type="button" data-copy="' + esc(`${location.origin}/${doc.slug}/latest.json`) + '">复制地址</button>';
+      wrap.appendChild(foot);
+      return wrap;
+    }
+
+    function fieldTable(doc, field, term) {
+      const wrap = document.createElement("div");
+      const cap = document.createElement("div");
+      cap.className = "opt__cap";
+      cap.innerHTML = `<b>字段详情</b> · ${esc(doc.slug)}`;
+      wrap.appendChild(cap);
+      const t = document.createElement("table");
+      t.className = "pv kv";
+      const tb = document.createElement("tbody");
+      const rows = [["字段", field.name], ["标题", field.title || "—"], ["类型", field.type || "—"], ["所属数据集", doc.title || doc.slug]];
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th"); th.scope = "row"; th.textContent = r[0];
+        const td = document.createElement("td"); td.innerHTML = mark(r[1], term);
+        tr.appendChild(th); tr.appendChild(td); tb.appendChild(tr);
+      });
+      t.appendChild(tb); wrap.appendChild(t);
+      return wrap;
+    }
+
+    function loadSnapshot(entry, body, term) {
+      const doc = entry.group.kind === "ds" ? entry.it.d : entry.it.d;
+      if (!doc.dataVersion) {
+        body.innerHTML = '<div class="opt__inner"><p class="muted" style="padding:16px">该数据集尚未发布数据。</p></div>';
+        return;
+      }
+      if (snapshotCache[doc.slug] !== undefined) {
+        body.textContent = "";
+        const inner = document.createElement("div"); inner.className = "opt__inner";
+        inner.appendChild(entry.group.kind === "ds" ? tableFor(doc, snapshotCache[doc.slug], term) : fieldTable(doc, entry.it.f, term));
+        body.appendChild(inner);
+        return;
+      }
+      body.textContent = "";
+      const loading = document.createElement("div"); loading.className = "opt__inner";
+      loading.innerHTML = '<div class="opt__cap"><b>载入中…</b></div>';
+      body.appendChild(loading);
+      fetch(`/${doc.slug}/versions/${encodeURIComponent(doc.dataVersion)}.json`)
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then((data) => {
+          snapshotCache[doc.slug] = data;
+          if (body.parentNode?.classList.contains("is-open")) {
+            body.textContent = "";
+            const inner2 = document.createElement("div"); inner2.className = "opt__inner";
+            inner2.appendChild(entry.group.kind === "ds" ? tableFor(doc, data, term) : fieldTable(doc, entry.it.f, term));
+            body.appendChild(inner2);
+          }
+        })
+        .catch(() => {
+          body.textContent = "";
+          const err = document.createElement("div"); err.className = "opt__inner";
+          err.innerHTML = '<div class="opt__cap"><b>无法载入快照</b></div>';
+          body.appendChild(err);
+        });
+    }
+
+    /* ---------- 渲染 ---------- */
+    function render() {
+      const term = (input.value || "").trim().toLowerCase();
+      const groups = build(term);
+      flat = [];
+      resultsEl.textContent = "";
+
+      if (!groups.length) {
+        const none = document.createElement("div"); none.className = "nohit";
+        none.textContent = "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。";
+        resultsEl.appendChild(none);
+        scopeEl.textContent = "0 个结果 · 搜索范围：数据集名称、字段与数据内容";
+        input.removeAttribute("aria-activedescendant");
+        return;
       }
 
-      function renderReady() {
-        state = "ready";
-        filterEl.disabled = false;
-        var q = (filterEl.value || "").trim().toLowerCase();
-        var list = !q
-          ? datasets
-          : datasets.filter((d) => (
-                String(d.slug || "").toLowerCase().indexOf(q) !== -1 ||
-                String(d.title || "").toLowerCase().indexOf(q) !== -1
-              ));
+      groups.forEach((g) => {
+        const h = document.createElement("div"); h.className = "grp"; h.textContent = g.name; resultsEl.appendChild(h);
+        g.items.forEach((it) => {
+          const idx = flat.length;
+          flat.push({ group: g, it: it });
+          const row = document.createElement("div");
+          row.className = "opt";
+          row.setAttribute("role", "option");
+          row.id = `opt-${idx}`;
+          row.setAttribute("aria-selected", "false");
 
-        LT.clear(bodyEl);
+          let title, badge = "", dsc, icon, tail;
+          if (g.kind === "ds") {
+            icon = "DS"; title = it.d.title || it.d.slug;
+            if (it.why) badge = `<span class="why">${esc(it.why)}命中</span>`;
+            dsc = `${it.d.slug} · ${(it.d.fields || []).length} 个字段 · ${it.d.dataVersion ? `v${it.d.dataVersion}` : "未发布数据"}`;
+            tail = `Schema ${it.d.schemaVersion || "—"}`;
+          } else if (g.kind === "field") {
+            icon = "≡"; title = it.f.title || it.f.name;
+            badge = '<span class="why">字段</span>';
+            dsc = `${it.f.name} · ${it.f.type || "—"} · ${it.d.slug}`;
+            tail = it.d.title || "";
+          } else {
+            icon = "→"; title = it.label; dsc = it.desc; tail = "打开";
+          }
 
-        if (datasets.length === 0) {
-          bodyEl.appendChild(
-            LT.el("div", { class: "card__body" }, [
-              LT.emptyState(
-                "还没有已发布数据集",
-                "管理员在控制台完成编目、审阅与发布后，数据集会出现在这里。",
-                LT.el("a", { class: "btn btn--sm", href: "/admin", text: "去后台编目" }),
-              ),
-            ]),
-          );
-          return;
+          const hrow = document.createElement("div");
+          hrow.className = "opt__row";
+          hrow.innerHTML = '<span class="ic">' + esc(icon) + '</span>' +
+            '<span class="tx"><span class="t">' + mark(title, term) + badge + "</span>" +
+            '<span class="d">' + mark(dsc, term) + "</span></span>" +
+            '<span class="tail">' + esc(tail) + "</span>";
+          row.appendChild(hrow);
+
+          if (g.kind !== "act") {
+            const body = document.createElement("div");
+            body.className = "opt__body";
+            body.setAttribute("aria-hidden", "true");
+            row.appendChild(body);
+          }
+          hrow.addEventListener("click", () => { select(idx, true); });
+          resultsEl.appendChild(row);
+        });
+      });
+
+      const n = flat.length;
+      scopeEl.textContent = (term ? `命中 ${n} 项` : `共 ${docs.length} 个数据集`) +
+        " · 搜索范围：数据集名称、字段与数据内容";
+      select(0, false);
+    }
+
+    function select(i, scroll) {
+      const opts = resultsEl.querySelectorAll(".opt");
+      if (!opts.length) return;
+      i = Math.max(0, Math.min(i, opts.length - 1));
+      const term = (input.value || "").trim().toLowerCase();
+      opts.forEach((o, j) => {
+        const on = j === i;
+        o.setAttribute("aria-selected", on ? "true" : "false");
+        const body = o.querySelector(".opt__body");
+        if (!body) return;
+        if (on) {
+          loadSnapshot(flat[j], body, term);
+          o.classList.add("is-open");
+          body.setAttribute("aria-hidden", "false");
+        } else {
+          o.classList.remove("is-open");
+          body.setAttribute("aria-hidden", "true");
         }
+      });
+      input.setAttribute("aria-activedescendant", opts[i].id);
+      if (scroll && opts[i].scrollIntoView) opts[i].scrollIntoView({ block: "nearest" });
+    }
+    function activeIndex() {
+      const opts = resultsEl.querySelectorAll(".opt");
+      for (let j = 0; j < opts.length; j++) if (opts[j].getAttribute("aria-selected") === "true") return j;
+      return 0;
+    }
+    function openCurrent() {
+      const entry = flat[activeIndex()];
+      if (!entry) return;
+      if (entry.group.kind === "act") location.href = entry.it.href;
+      else location.href = `/dataset?slug=${encodeURIComponent(entry.it.d.slug)}`;
+    }
 
-        if (list.length === 0) {
-          bodyEl.appendChild(
-            LT.el("div", { class: "card__body" }, [
-              LT.emptyState(
-                "没有匹配的数据集",
-                `没有 slug 或标题包含「${filterEl.value.trim()}」的数据集。`,
-                LT.el("button", {
-                  class: "btn btn--sm",
-                  type: "button",
-                  text: "清空筛选",
-                  onclick: () => {
-                    filterEl.value = "";
-                    renderReady();
-                    filterEl.focus();
-                  },
-                }),
-              ),
-            ]),
-          );
-          return;
-        }
+    /* ---------- 交互 ---------- */
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); select(activeIndex() + 1, true); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); select(activeIndex() - 1, true); }
+      else if (e.key === "Enter") { e.preventDefault(); openCurrent(); }
+      else if (e.key === "Escape") { input.value = ""; render(); }
+    });
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); input.focus(); input.select(); }
+    });
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".copy");
+      if (!b) return;
+      const text = b.getAttribute("data-copy");
+      const done = () => {
+        const o = b.textContent; b.textContent = "已复制"; b.classList.add("done");
+        setTimeout(() => { b.textContent = o; b.classList.remove("done"); }, 1400);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done); else done();
+    });
+    chipsEl.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-q]");
+      if (!b) return;
+      input.value = b.getAttribute("data-q");
+      render();
+      input.focus();
+    });
+    const toggle = document.querySelector(".navtoggle");
+    if (toggle) toggle.addEventListener("click", () => {
+      const nav = document.querySelector(".topnav");
+      const open = nav.classList.toggle("is-open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
 
-        bodyEl.appendChild(buildTable(list));
+    /* ---------- 「试试」：由字段标题与数据正文推导 ---------- */
+    function buildChips() {
+      const terms = [];
+      function add(t) {
+        t = (t == null ? "" : String(t)).trim();
+        if (!t || t.length > 6 || terms.indexOf(t) !== -1 || terms.length >= 5) return;
+        terms.push(t);
       }
-
-      function load() {
-        renderSkeleton();
-        LT.get("/index.json")
-          .then((catalog) => {
-            datasets = (catalog?.datasets) || [];
-            datasets = datasets.slice().sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
-            renderReady();
-          })
-          .catch(renderError);
+      for (let i = 0; i < docs.length && terms.length < 3; i++) {
+        const fs = docs[i].fields || [];
+        for (let j = 0; j < fs.length && terms.length < 3; j++) add(fs[j].title || fs[j].name);
       }
+      docs.forEach((d) => {
+        const vals = d.terms || [];
+        if (vals.length) add(vals[0]);
+      });
+      terms.forEach((t) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.setAttribute("data-q", t); b.textContent = t;
+        chipsEl.appendChild(b);
+      });
+    }
 
-      filterEl.addEventListener(
-        "input",
-        LT.debounce(() => {
-          if (state === "ready") renderReady();
-        }, 120),
-      );
+    /* ---------- 登录态 ---------- */
+    fetch("/api/admin/session").then((r) => {
+      if (!r.ok) throw new Error("no");
+      return r.json();
+    }).then((s) => {
+      const chip = document.getElementById("authchip");
+      chip.dataset.state = "in";
+      chip.querySelector(".authchip__label").textContent = `已登录 · ${(s?.actor) || "管理员"}`;
+    }).catch(() => {
+      const chip = document.getElementById("authchip");
+      chip.dataset.state = "out";
+      chip.querySelector(".authchip__label").textContent = "未登录";
+    });
 
-      load();
-    })();
-  </script>
+    /* ---------- 载入索引 ---------- */
+    fetch("/search/index.json")
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((index) => {
+        docs = (index?.datasets) || [];
+        buildChips();
+        render();
+        input.focus();
+      })
+      .catch(() => {
+        scopeEl.textContent = "数据目录暂不可用";
+        const box = document.createElement("div");
+        box.className = "empty";
+        box.innerHTML = "<h3>数据目录暂不可用</h3><p class=\"muted\">无法读取 /search/index.json，请稍后重试。</p>";
+        resultsEl.appendChild(box);
+      });
+  })();
+</script>
 </body>
 </html>
