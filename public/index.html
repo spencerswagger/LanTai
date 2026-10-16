@@ -10,18 +10,7 @@
 <body>
 <a class="skip-link" href="#stage">跳到主要内容</a>
 
-<header class="topbar">
-  <div class="topbar__inner container">
-    <a class="logo" href="/" aria-label="LANTAI 首页"><span class="a">LAN</span><span class="b">TAI</span></a>
-    <nav class="topnav" aria-label="主导航">
-      <a href="/docs/">取数方式</a>
-      <a href="/submit">提交数据</a>
-      <a href="/admin">控制台</a>
-      <span class="authchip" data-state="pending" id="authchip"><span class="authchip__dot"></span><span class="authchip__label">检查登录…</span></span>
-    </nav>
-    <button class="btn btn--ghost btn--sm navtoggle" type="button" aria-label="切换导航菜单" aria-expanded="false">菜单</button>
-  </div>
-</header>
+<header class="topbar" data-lt-topbar></header>
 
 <main>
   <div class="container">
@@ -30,8 +19,8 @@
       <p class="naming">取自《汉书·百官公卿表》，喻数据典藏之机构</p>
 
       <div class="cta">
-        <a class="btn btn--primary" href="/submit">提交数据</a>
-        <a class="btn" href="/docs/">取数方式</a>
+        <a class="btn btn--primary" href="/submit">贡献数据</a>
+        <a class="btn" href="/docs/">文档</a>
       </div>
 
       <search class="box">
@@ -54,24 +43,21 @@
   </div>
 </main>
 
-<footer class="sitefoot">
-  <div class="container sitefoot__row">
-    <span>公开数据编目与发布</span>
-    <span><a href="/docs/">取数方式</a> · <a href="/docs/reader.html">使用说明</a> · <a href="/search">搜索</a></span>
-  </div>
-</footer>
+<footer class="sitefoot" data-lt-footer></footer>
 
 <script src="/app.js"></script>
 <script>
   (() => {
     "use strict";
 
+    LT.mountShell({ active: "catalog" });
+
     const ACTIONS = [
-      { label: "提交数据", desc: "匿名提交符合 Schema 的内容", kw: "提交 投稿 贡献 上传", href: "/submit" },
-      { label: "取数方式", desc: "静态 JSON 接口与缓存说明", kw: "取数 接口 api 文档 json 下载 开放", href: "/docs/" },
+      { label: "贡献数据", desc: "匿名提交符合 Schema 的内容", kw: "提交 投稿 贡献 上传", href: "/submit" },
+      { label: "文档", desc: "静态 JSON 接口与缓存说明", kw: "文档 接口 api json 下载 开放", href: "/docs/" },
       { label: "查询进度", desc: "凭追踪令牌查看提交状态", kw: "查询 进度 状态 令牌 token", href: "/status" },
       { label: "控制台", desc: "编目、审阅与发布", kw: "控制台 后台 管理 审阅 发布", href: "/admin" },
-      { label: "使用说明", desc: "读者 / 贡献者 / 运营者指南", kw: "说明 帮助 文档 指南", href: "/docs/reader.html" }
+      { label: "读者指南", desc: "读者 / 贡献者 / 运营者指南", kw: "说明 帮助 文档 指南 读者", href: "/docs/reader.html" }
     ];
 
     let docs = [];          // 来自 /search/index.json：{ slug,title,schemaVersion,dataVersion,fields,terms }
@@ -123,7 +109,7 @@
         const act = ACTIONS.filter((a) => (`${a.label} ${a.desc} ${a.kw}`).toLowerCase().indexOf(term) !== -1);
         if (act.length) groups.push({ name: "操作", kind: "act", items: act });
       } else {
-        groups.push({ name: "常用操作", kind: "act", items: ACTIONS });
+        groups.push({ name: "快捷入口", kind: "act", items: ACTIONS });
       }
       return groups;
     }
@@ -299,7 +285,10 @@
             body.setAttribute("aria-hidden", "true");
             row.appendChild(body);
           }
-          hrow.addEventListener("click", () => { select(idx, true); });
+          hrow.addEventListener("click", () => {
+            if (g.kind === "act") { location.href = it.href; return; }
+            select(idx, true);
+          });
           resultsEl.appendChild(row);
         });
       });
@@ -372,12 +361,6 @@
       render();
       input.focus();
     });
-    const toggle = document.querySelector(".navtoggle");
-    if (toggle) toggle.addEventListener("click", () => {
-      const nav = document.querySelector(".topnav");
-      const open = nav.classList.toggle("is-open");
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    });
 
     /* ---------- 「试试」：由字段标题与数据正文推导 ---------- */
     function buildChips() {
@@ -401,20 +384,6 @@
         chipsEl.appendChild(b);
       });
     }
-
-    /* ---------- 登录态 ---------- */
-    fetch("/api/admin/session").then((r) => {
-      if (!r.ok) throw new Error("no");
-      return r.json();
-    }).then((s) => {
-      const chip = document.getElementById("authchip");
-      chip.dataset.state = "in";
-      chip.querySelector(".authchip__label").textContent = `已登录 · ${(s?.actor) || "管理员"}`;
-    }).catch(() => {
-      const chip = document.getElementById("authchip");
-      chip.dataset.state = "out";
-      chip.querySelector(".authchip__label").textContent = "未登录";
-    });
 
     /* ---------- 载入索引 ---------- */
     fetch("/search/index.json")

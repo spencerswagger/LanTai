@@ -256,6 +256,9 @@ main {
   gap: var(--s5);
   align-items: start;
 }
+.doc-main {
+  min-width: 0;
+}
 @media (max-width: 860px) {
   .grid-2,
   .grid-3,
@@ -387,6 +390,19 @@ main {
 }
 .authchip[data-state="out"] .authchip__dot {
   background: var(--amber);
+}
+.authchip__name {
+  text-decoration: none;
+  color: inherit;
+  font-weight: 600;
+}
+.topnav .authchip__name {
+  padding: 0;
+  border-radius: 0;
+}
+.topnav .authchip__name:hover {
+  background: none;
+  color: var(--ink);
 }
 
 .sitefoot {
@@ -726,6 +742,11 @@ main {
 }
 .searchbar .input {
   flex: 1;
+}
+.input--cell {
+  min-width: 110px;
+  padding: 6px 9px;
+  font-size: 0.86rem;
 }
 .field__error {
   color: var(--seal);

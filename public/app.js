@@ -10,15 +10,20 @@
    ========================================================================== */
 (() => {
   const PUBLIC_NAV = [
-    { id: "catalog", href: "/", label: "数据目录" },
-    { id: "docs", href: "/docs/", label: "取数方式" },
-    { id: "submit", href: "/submit", label: "提交数据" },
-    { id: "track", href: "/status", label: "查询进度" },
+    { id: "catalog", href: "/", label: "开始使用" },
+    { id: "submit", href: "/submit", label: "贡献" },
+    { id: "docs", href: "/docs/", label: "文档" },
   ];
   const CONSOLE_NAV = [
     { id: "datasets", href: "/admin", label: "数据集与 Schema" },
     { id: "review", href: "/review", label: "审阅队列" },
     { id: "ops", href: "/ops", label: "运营" },
+  ];
+  const DOCS_NAV = [
+    { id: "docs", href: "/docs/", label: "总览" },
+    { id: "reader", href: "/docs/reader.html", label: "读者指南" },
+    { id: "contributor", href: "/docs/contributor.html", label: "贡献者指南" },
+    { id: "operator", href: "/docs/operator.html", label: "运营者指南" },
   ];
 
   /* ---------- DOM helpers ---------- */
@@ -218,9 +223,9 @@
     const toggle = el("button", {
       class: "btn btn--ghost btn--sm navtoggle",
       type: "button",
-      "aria-label": "切换导航菜单",
+      "aria-label": "打开导航菜单",
       "aria-expanded": "false",
-      text: "菜单",
+      html: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     });
     const nav = el("nav", { class: "topnav", "aria-label": "主导航" });
     for (const item of PUBLIC_NAV) {
@@ -228,13 +233,9 @@
       if (item.id === active) a.setAttribute("aria-current", "page");
       nav.appendChild(a);
     }
-    const inConsole = CONSOLE_NAV.some((n) => n.id === active);
-    const consoleLink = el("a", { href: "/admin", text: "控制台" });
-    if (inConsole) consoleLink.setAttribute("aria-current", "page");
-    nav.appendChild(consoleLink);
     const chip = el("span", { class: "authchip", dataset: { state: "pending" } }, [
       el("span", { class: "authchip__dot" }),
-      el("span", { class: "authchip__label", text: "检查登录…" }),
+      el("a", { class: "authchip__name", href: "/admin", text: "控制台" }),
     ]);
     nav.appendChild(chip);
     toggle.addEventListener("click", () => {
@@ -256,33 +257,26 @@
       ]),
     );
     const links = el("nav", { class: "cluster", "aria-label": "页脚导航" });
-    links.appendChild(el("a", { href: "/docs/", text: "取数方式" }));
+    links.appendChild(el("a", { href: "/docs/", text: "文档" }));
     links.appendChild(el("a", { href: "/docs/reader.html", text: "使用说明" }));
-    links.appendChild(el("a", { href: "/", text: "数据目录" }));
+    links.appendChild(el("a", { href: "/submit", text: "贡献" }));
     inner.appendChild(links);
     return inner;
   }
 
   function renderSession(chip) {
+    const link = chip.querySelector(".authchip__name");
     get("/api/admin/session")
       .then((s) => {
         chip.dataset.state = "in";
-        chip.querySelector(".authchip__label").textContent =
-          `已登录 · ${s?.actor ? s.actor : "管理员"}`;
-        chip.title = "控制台已鉴权";
+        const name = s?.actor ? s.actor : "控制台";
+        link.textContent = name;
+        link.title = "进入控制台";
       })
       .catch(() => {
         chip.dataset.state = "out";
-        const label = chip.querySelector(".authchip__label");
-        label.textContent = "";
-        const redirect = encodeURIComponent(location.pathname + location.search);
-        chip.appendChild(
-          el("a", {
-            href: `/cdn-cgi/access/login?redirect_url=${redirect}`,
-            text: "登录控制台",
-            style: "text-decoration:none;font-weight:600",
-          }),
-        );
+        link.textContent = "登录";
+        link.title = "登录并进入控制台";
       });
   }
 
@@ -296,6 +290,8 @@
     if (window.__ltAuthChip) renderSession(window.__ltAuthChip);
     const side = $("[data-lt-sidenav]");
     if (side) mountSidenav(side, active);
+    const dnav = $("[data-lt-docsnav]");
+    if (dnav) mountDocsNav(dnav);
     document.documentElement.setAttribute("data-page", active);
   }
 
@@ -309,7 +305,24 @@
     }
     node.appendChild(el("div", { class: "sidenav__group", text: "站点" }));
     node.appendChild(el("a", { href: "/", text: "返回公开站点" }));
-    node.appendChild(el("a", { href: "/docs/", text: "开放接口文档" }));
+    node.appendChild(el("a", { href: "/docs/", text: "文档" }));
+  }
+
+  function mountDocsNav(node, _active) {
+    clear(node);
+    const here = location.pathname.replace(/\/+$/, "/");
+    node.appendChild(el("div", { class: "sidenav__group", text: "文档" }));
+    for (const item of DOCS_NAV) {
+      const a = el("a", { href: item.href, text: item.label });
+      const target = item.href.replace(/\/+$/, "/");
+      if (target === here) a.setAttribute("aria-current", "page");
+      node.appendChild(a);
+    }
+    node.appendChild(el("div", { class: "sidenav__group", text: "相关" }));
+    node.appendChild(el("a", { href: "/", text: "数据目录" }));
+    node.appendChild(el("a", { href: "/search", text: "跨数据集搜索" }));
+    node.appendChild(el("a", { href: "/submit", text: "贡献数据" }));
+    node.appendChild(el("a", { href: "/status", text: "查询进度" }));
   }
 
   /* ---------- steps ---------- */
@@ -656,6 +669,7 @@
   window.LT = {
     PUBLIC_NAV,
     CONSOLE_NAV,
+    DOCS_NAV,
     // dom
     el,
     $,
@@ -688,6 +702,7 @@
     // shell
     mountShell,
     mountSidenav,
+    mountDocsNav,
     // misc
     param,
     datasetLink,

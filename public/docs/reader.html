@@ -19,13 +19,11 @@
           所有发布物均为静态 JSON，读取不经 Worker 计算；直接以 HTTP GET 拉取即可，
           无需鉴权、不消耗请求配额，可放心配合缓存与镜像使用。
         </p>
-        <nav class="cluster" aria-label="文档导航">
-          <a href="/docs/">总览</a>
-          <a href="/docs/reader.html" aria-current="page">读者</a>
-          <a href="/docs/contributor.html">贡献者</a>
-          <a href="/docs/operator.html">运营者</a>
-        </nav>
       </header>
+
+      <div class="sidebar-layout">
+        <aside class="sidenav" data-lt-docsnav aria-label="文档目录"></aside>
+        <div class="doc-main">
 
       <section class="card card--flush">
         <div class="card__head"><h2>端点清单</h2></div>
@@ -89,6 +87,8 @@ fetch("/demo/versions/3.json").then((r) =&gt; r.json());</pre>
         <a href="/docs/contributor.html">贡献者指南</a>
         <a href="/docs/operator.html">运营者指南</a>
       </nav>
+        </div>
+      </div>
     </div>
   </main>
   <footer class="sitefoot" data-lt-footer></footer>

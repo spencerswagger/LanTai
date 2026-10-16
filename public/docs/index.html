@@ -19,13 +19,11 @@
           兰台把公开数据发布为静态 JSON：读取直接走 CDN、绕开 Worker、零计算；写入与审阅经 Worker 处理。
           本页汇总四种角色的使用文档与全部开放接口，供你按需取用。
         </p>
-        <nav class="cluster" aria-label="文档导航">
-          <a href="/docs/" aria-current="page">总览</a>
-          <a href="/docs/reader.html">读者</a>
-          <a href="/docs/contributor.html">贡献者</a>
-          <a href="/docs/operator.html">运营者</a>
-        </nav>
       </header>
+
+      <div class="sidebar-layout">
+        <aside class="sidenav" data-lt-docsnav aria-label="文档目录"></aside>
+        <div class="doc-main">
 
       <section class="card card--flush">
         <div class="card__head"><h2>平台概览</h2></div>
@@ -148,6 +146,8 @@ curl -s https://&lt;站点域&gt;/{slug}/versions/{version}.json</pre>
         <a href="/docs/contributor.html">贡献者指南</a>
         <a href="/docs/operator.html">运营者指南</a>
       </nav>
+        </div>
+      </div>
     </div>
   </main>
   <footer class="sitefoot" data-lt-footer></footer>
