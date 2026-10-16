@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>风格选择 · 兰台</title>
+<style>
+  :root{--bg:#0e1015;--card:#161a22;--line:#242a35;--ink:#eef1f6;--muted:#98a1b0;--accent:#7aa2ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6}
+  .wrap{max-width:1440px;margin:0 auto;padding:64px 32px 96px}
+  h1{font-size:clamp(2rem,1.2rem+2.4vw,3rem);letter-spacing:-.02em;margin:0 0 12px}
+  .lede{color:var(--muted);max-width:70ch;font-size:1.05rem;margin:0 0 40px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  @media(max-width:1000px){.grid{grid-template-columns:1fr}}
+  a.card{display:flex;flex-direction:column;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;transition:transform .18s,border-color .18s}
+  a.card:hover{transform:translateY(-3px);border-color:var(--accent)}
+  .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  h2{margin:6px 0 0;font-size:1.4rem}
+  p{margin:0;color:var(--muted);font-size:.95rem}
+  .sw{height:120px;border-radius:12px;overflow:hidden;border:1px solid var(--line);display:flex;flex-direction:column}
+  .sw i{flex:1;display:block}
+  .go{color:var(--accent);font-weight:600;margin-top:auto}
+  ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:.92rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>选择界面风格方向</h1>
+  <p class="lede">下面三种方向都按你的要求做了：<strong>整屏宽度利用</strong>、<strong>更大气的排版</strong>、<strong>更少的入口与更少文字</strong>。点开任一方向查看完整的首页样稿（含真实数据、宽表格、响应式）。选定后我会把这套视觉推到全部页面。</p>
+  <div class="grid">
+    <a class="card" href="a.html">
+      <span class="tag">方向 A</span>
+      <h2>现代数据控制台</h2>
+      <div class="sw"><i style="background:#ffffff"></i><i style="background:#f5f6f8"></i><i style="background:#4f46e5"></i></div>
+      <p>清爽、冷静、专业。靛蓝强调色、大留白、宽表格与统计条。类似 Linear / Vercel 的现代数据产品观感。</p>
+      <ul><li>明亮主题为基调</li><li>信息密度高但克制</li><li>最稳妥、最「主流现代」</li></ul>
+      <span class="go">查看方向 A →</span>
+    </a>
+    <a class="card" href="b.html">
+      <span class="tag">方向 B</span>
+      <h2>编辑型档案（放大版）</h2>
+      <div class="sw"><i style="background:#f4f1ea"></i><i style="background:#1e3a5f"></i><i style="background:#b23a2e"></i></div>
+      <p>在现有「档案/典籍」气质上放大：超大衬线标题、羊皮纸底、发丝分隔线、非对称网格。最有辨识度。</p>
+      <ul><li>博物馆/目录式排版</li><li>气质儒雅、便于长期阅读</li><li>与「兰台」文脉最贴合</li></ul>
+      <span class="go">查看方向 B →</span>
+    </a>
+    <a class="card" href="c.html">
+      <span class="tag">方向 C</span>
+      <h2>暗色科技 · 数据中枢</h2>
+      <div class="sw"><i style="background:#0b0e14"></i><i style="background:#121824"></i><i style="background:#22d3ee"></i></div>
+      <p>深色为基调，青/紫微光强调，等宽数据、发光统计卡。戏剧感强、适合大屏展示。</p>
+      <ul><li>暗色为主，亮色为辅</li><li>视觉冲击最强</li><li>数据感强、偏「大屏」</li></ul>
+      <span class="go">查看方向 C →</span>
+    </a>
+  </div>
+</div>
+</body>
+</html>

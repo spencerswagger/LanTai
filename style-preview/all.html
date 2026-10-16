@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>界面风格对比 · 兰台 LanTai</title>
+<style>
+  :root{--bg:#0b0d12;--card:#12161f;--line:#232a37;--ink:#eef1f6;--muted:#98a1b0;--accent:#7aa2ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  header{padding:30px 34px 6px;max-width:1500px;margin:0 auto}
+  h1{margin:0 0 8px;font-size:1.7rem;letter-spacing:-.02em}
+  .sub{margin:0;color:var(--muted);font-size:.95rem;line-height:1.7;max-width:90ch}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;padding:24px 34px 64px;max-width:1500px;margin:0 auto}
+  @media(max-width:1080px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .bar b{font-size:1rem}
+  .tag{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+  .bar .open{margin-left:auto;color:var(--accent);font-size:.84rem;font-weight:600;text-decoration:none}
+  .bar .open:hover{text-decoration:underline}
+  .shot{display:block;width:100%;background:#fff}
+  .shot img{display:block;width:100%;height:auto}
+  .legend{padding:14px 18px;border-top:1px solid var(--line);color:var(--muted);font-size:.86rem;line-height:1.7}
+  .legend b{color:var(--ink)}
+  footer{max-width:1500px;margin:0 auto;padding:0 34px 64px;color:var(--muted);font-size:.85rem}
+  code{background:#1b2130;padding:2px 6px;border-radius:5px;font-size:.85em}
+</style>
+</head>
+<body>
+<header>
+  <h1>界面风格对比</h1>
+  <p class="sub">
+    三张缩略图均以 <b>1440px 桌面宽度</b> 渲染（整屏宽度利用），下面按真实比例展示。点「打开交互版」可看真实全尺寸、可滚动、可点按的页面；
+    也可以直接打开同目录下的 <code>a.html</code> / <code>b.html</code> / <code>c.html</code>。
+  </p>
+</header>
+
+<div class="grid">
+  <div class="panel">
+    <div class="bar"><span class="tag">A</span><b>现代数据控制台</b><a class="open" href="a.html" target="_blank" rel="noopener">打开交互版 ↗</a></div>
+    <a class="shot" href="img/a.png" target="_blank" rel="noopener"><img src="img/a.png" alt="方向 A：现代数据控制台 首页预览" /></a>
+    <div class="legend"><b>气质</b>：清爽、冷静、专业。<br /><b>特点</b>：靛蓝强调色、大留白、宽表格与统计卡；最主流的现代数据产品观感。</div>
+  </div>
+  <div class="panel">
+    <div class="bar"><span class="tag">B</span><b>编辑型档案（放大版）</b><a class="open" href="b.html" target="_blank" rel="noopener">打开交互版 ↗</a></div>
+    <a class="shot" href="img/b.png" target="_blank" rel="noopener"><img src="img/b.png" alt="方向 B：编辑型档案 首页预览" /></a>
+    <div class="legend"><b>气质</b>：儒雅、克制、有典藏感。<br /><b>特点</b>：羊皮纸底、超大衬线标题、发丝分隔线、非对称网格；与「兰台」文脉最贴合，辨识度最高。</div>
+  </div>
+  <div class="panel">
+    <div class="bar"><span class="tag">C</span><b>暗色科技 · 数据中枢</b><a class="open" href="c.html" target="_blank" rel="noopener">打开交互版 ↗</a></div>
+    <a class="shot" href="img/c.png" target="_blank" rel="noopener"><img src="img/c.png" alt="方向 C：暗色科技 首页预览" /></a>
+    <div class="legend"><b>气质</b>：现代、强烈、有科技感。<br /><b>特点</b>：深色为底、青/紫微光、等宽数据；偏大屏展示与「数据中枢」氛围。</div>
+  </div>
+</div>
+
+<footer>
+  说明：三种方向都已按你的要求落实「整屏宽度利用 / 更大气 / 更少入口与文案」。选定一个方向后，我会把它推到全部页面（首页、目录、详情、提交、查询、控制台、审阅、运营、文档），并统一做「傻瓜式」交互精简。
+</footer>
+</body>
+</html>

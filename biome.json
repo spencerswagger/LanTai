@@ -6,7 +6,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/docs", "!**/.wrangler", "!**/docs/blueprint"]
+    "includes": [
+      "**",
+      "!**/docs",
+      "!**/.wrangler",
+      "!**/docs/blueprint",
+      "!**/style-preview",
+      "!**/public/style"
+    ]
   },
   "formatter": {
     "enabled": true,
