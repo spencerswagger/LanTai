@@ -395,12 +395,37 @@
         );
       }
 
+      function resolveLocalRef(root, ref) {
+        var cur;
+        var parts;
+        var k;
+        var i;
+        if (typeof ref !== "string" || ref.slice(0, 2) !== "#/") return null;
+        cur = root;
+        parts = ref.slice(2).split("/");
+        for (i = 0; i < parts.length; i++) {
+          if (!cur || typeof cur !== "object") return null;
+          k = parts[i].replace(/~1/g, "/").replace(/~0/g, "~");
+          cur = cur[k];
+        }
+        return cur && typeof cur === "object" ? cur : null;
+      }
+      /* 定位承载 properties 的 Schema 节点：根为 array 取 items；本地 $ref（#/$defs/* 等）解析一跳。 */
+      function schemaContainer(schemaDoc) {
+        var node;
+        var resolved;
+        if (!schemaDoc || typeof schemaDoc !== "object") return null;
+        node = schemaDoc;
+        if (node.type === "array" && node.items && typeof node.items === "object") node = node.items;
+        if (node.$ref) {
+          resolved = resolveLocalRef(schemaDoc, node.$ref);
+          if (resolved) node = resolved;
+        }
+        return node;
+      }
       function renderHints(slug, ver, schema) {
         LT.clear(els.hints);
-        var container =
-          schema?.type === "array" && schema?.items && typeof schema.items === "object"
-            ? schema.items
-            : schema;
+        var container = schemaContainer(schema);
         var props =
           container?.properties && typeof container.properties === "object"
             ? container.properties
@@ -465,20 +490,40 @@
         );
       }
 
-      function sampleValue(schema) {
-        if (!schema || typeof schema !== "object") return null;
+      /* 按 Schema 生成骨架值：解析本地 $ref、递归对象/数组（含列表项），深度上限防循环。 */
+      function sampleValue(schema, depth, root) {
+        var ref;
+        var type;
+        var items;
+        var one;
+        var obj;
+        var props;
+        depth = depth || 0;
+        root = root || schema;
+        if (depth > 6 || !schema || typeof schema !== "object") return null;
+        if (schema.$ref) {
+          ref = resolveLocalRef(root, schema.$ref);
+          return ref ? sampleValue(ref, depth + 1, root) : null;
+        }
         if (Array.isArray(schema.examples) && schema.examples.length > 0) return schema.examples[0];
         if (schema.default !== undefined) return schema.default;
-        var type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+        type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
         if (type === "object" || (!type && schema.properties)) {
-          const obj = {};
-          const props = schema.properties || {};
+          obj = {};
+          props = schema.properties || {};
           Object.keys(props).forEach((k) => {
-            obj[k] = sampleValue(props[k]);
+            obj[k] = sampleValue(props[k], depth + 1, root);
           });
           return obj;
         }
-        if (type === "array") return [];
+        if (type === "array") {
+          items = schema.items && typeof schema.items === "object" ? schema.items : null;
+          if (items) {
+            one = sampleValue(items, depth + 1, root);
+            return one === null ? [] : [one];
+          }
+          return [];
+        }
         if (type === "integer" || type === "number") return 0;
         if (type === "boolean") return false;
         if (type === "null") return null;
