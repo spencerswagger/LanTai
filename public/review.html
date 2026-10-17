@@ -378,6 +378,18 @@
 
         ensureTab(order[0]);
 
+        /* 操作前提示：复用摘要计数，让审阅者对候选规模与差异量心中有数。 */
+        function summaryLine(v) {
+          if (!v?.counts) return "";
+          var c = v.counts;
+          return (
+            `候选 ${LT.fmtNumber(c.candidateBytes)} 字节 / ${LT.fmtNumber(c.candidateNodes)} 节点；` +
+            `与当前已发布版本差异 ${LT.fmtNumber(c.diffEntries)} 条` +
+            (v.diffTruncated ? "（差异较多，预览仅显示前 200 条）" : "") +
+            "。"
+          );
+        }
+
         var reasonInput = LT.el("input", {
           class: "input",
           id: "reject-reason",
@@ -399,12 +411,22 @@
         });
 
         stageBtn.addEventListener("click", () => {
-          doAction(stageBtn, "预发布", "/stage", {});
+          LT.confirmDialog({
+            title: "预发布该提交？",
+            message:
+              "将把该提交内容生成为一个预览版本（不影响线上 latest，公开读取方看不到）。" +
+              summaryLine(views),
+            confirmLabel: "确认预发布",
+          }).then((ok) => {
+            if (ok) doAction(stageBtn, "预发布", "/stage", {});
+          });
         });
         promoteBtn.addEventListener("click", () => {
           LT.confirmDialog({
             title: "正式发布该提交？",
-            message: "将把该提交的内容作为一个新的不可变数据快照发布，公开读取方会立即看到。发布后不可修改。",
+            message:
+              "将把该提交的内容作为一个新的不可变数据快照发布，公开读取方会立即看到。发布后不可修改。" +
+              summaryLine(views),
             confirmLabel: "确认发布",
             danger: true,
           }).then((ok) => {

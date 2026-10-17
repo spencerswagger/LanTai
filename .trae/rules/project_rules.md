@@ -40,7 +40,8 @@
   1. `wrangler deploy --dry-run --env test --outdir=dist-test` 本地打包（无需鉴权）
   2. 静态资源清单哈希 = `blake3(base64(文件内容)+扩展名).hex.slice(0,32)`（与 wrangler `src/pages/hash.ts` 一致）
   3. `POST /accounts/{id}/workers/scripts/lantai-test/assets-upload-session` 建会话 → 用返回的会话 JWT `POST /accounts/{id}/workers/assets/upload?base64=true` 上传资源（需带 `Authorization: Bearer <jwt>`，用 curl）
-  4. `PUT /accounts/{id}/workers/scripts/lantai-test` multipart 上传脚本：metadata = `main_module` + `bindings`（d1 / r2_bucket / assets / plain_text）+ `assets{jwt,config:{run_worker_first}}` + `compatibility_flags:["nodejs_compat"]`
+  4. `PUT /accounts/{id}/workers/scripts/lantai-test` multipart 上传脚本：metadata = `main_module` + `bindings`（d1 / r2_bucket / assets / plain_text）+ `assets{jwt,config:{run_worker_first:true,_headers,_redirects}}` + `compatibility_flags:["nodejs_compat"]`
+  - ⚠️ `_headers` / `_redirects` **不是**独立 part，而是字符串放进 `metadata.assets.config._headers` / `._redirects`（与 wrangler `createWorkerUploadForm` 一致，见 wrangler-dist `cli.js`）。若省略，Cloudflare 用默认缓存头，仓库里的 `public/_headers` **不会生效**。故部署时务必读取 `public/_headers`（存在才带）注入 config。
   - 静态资源哈希算法（务必与 wrangler 一致）：`blake3(base64(文件内容) + 扩展名).hex.slice(0,32)`（`blake3-wasm`）。
   - 本地打包输出到 `/tmp/dist-test`（勿留在仓库；`dist/`、`dist-test/` 已在 .gitignore）。
 
