@@ -84,6 +84,38 @@ describe("review views", () => {
     expect(views.diff).toEqual([{ path: "/value", kind: "changed", before: 1, after: 2 }]);
   });
 
+  it("summary omits heavy views; payload/render serve on demand", async () => {
+    await setupFrozen("rv-c");
+    const submissionId = await submit("rv-c", { name: "Alice", value: 7 });
+
+    const summaryRes = await callApp(`/api/admin/submissions/${submissionId}/summary`);
+    expect(summaryRes.status).toBe(200);
+    const summary = await json<{
+      submission: Record<string, unknown>;
+      counts: { candidateBytes: number; candidateNodes: number; diffEntries: number };
+      diff: unknown[];
+      diffTruncated: boolean;
+    }>(summaryRes);
+    expect(summary).not.toHaveProperty("jsonTree");
+    expect(summary).not.toHaveProperty("render");
+    expect(summary).not.toHaveProperty("current");
+    expect(summary.submission).toMatchObject({ slug: "rv-c", status: "pending" });
+    expect(summary.counts.candidateBytes).toBeGreaterThan(0);
+    expect(summary.counts.candidateNodes).toBeGreaterThan(0);
+    expect(summary.diff.length).toBeLessThanOrEqual(200);
+    expect(summary.diffTruncated).toBe(false);
+
+    const payload = await json<{ payload: unknown }>(
+      await callApp(`/api/admin/submissions/${submissionId}/payload`),
+    );
+    expect(payload.payload).toEqual({ name: "Alice", value: 7 });
+
+    const render = await json<{ render: RenderField[] }>(
+      await callApp(`/api/admin/submissions/${submissionId}/render`),
+    );
+    expect(render.render.find((f) => f.key === "name")?.value).toBe("Alice");
+  });
+
   it("returns 404 for an unknown submission", async () => {
     const res = await callApp(`/api/admin/submissions/${crypto.randomUUID()}`);
     expect(res.status).toBe(404);

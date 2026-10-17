@@ -124,3 +124,89 @@ export async function buildReviewViews(env: Env, submissionId: string): Promise<
     current,
   };
 }
+
+/** 迭代计数（避免深树递归爆栈），用于摘要体积/规模提示。 */
+function countNodes(value: unknown): number {
+  let count = 0;
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const v = stack.pop();
+    count++;
+    if (Array.isArray(v)) {
+      for (const item of v) stack.push(item);
+    } else if (isPlainObject(v)) {
+      for (const key of Object.keys(v)) stack.push(v[key]);
+    }
+  }
+  return count;
+}
+
+/** 审阅摘要中返回的 diff 上限，避免超大 payload 的差异列表撑爆响应。 */
+export const REVIEW_DIFF_LIMIT = 200;
+
+export interface ReviewSummary {
+  submission: ReviewSubmissionSummary;
+  schema: unknown;
+  counts: {
+    candidateBytes: number;
+    currentBytes: number;
+    candidateNodes: number;
+    diffEntries: number;
+  };
+  diff: DiffEntry[];
+  diffTruncated: boolean;
+  diffBase: "latest-published";
+}
+
+/**
+ * 轻量摘要：只返回元数据、Schema、规模计数与**截断后**的 diff 预览，
+ * 不含完整 render / jsonTree / current —— 供大 payload 的审阅首屏使用。
+ */
+export async function buildReviewSummary(env: Env, submissionId: string): Promise<ReviewSummary> {
+  const submission = await getSubmissionById(env, submissionId);
+  const schemaRow = await getSchemaVersion(env, submission.dataset_id, submission.schema_version);
+  const schema = JSON.parse(schemaRow.json_schema) as unknown;
+  const candidate = JSON.parse(submission.payload) as unknown;
+
+  const pointer = await readLatestPointer(env.BUCKET, submission.slug);
+  const current = pointer
+    ? await readJson<unknown>(env.BUCKET, dataSnapshotKey(submission.slug, pointer.dataVersion))
+    : null;
+
+  const diff = diffJson(current, candidate);
+  return {
+    submission: {
+      id: submission.id,
+      slug: submission.slug,
+      datasetId: submission.dataset_id,
+      status: submission.status,
+      schemaVersion: submission.schema_version,
+      createdAt: submission.created_at,
+      hasEmail: submission.contact_email !== null && submission.contact_email.trim() !== "",
+    },
+    schema,
+    counts: {
+      candidateBytes: submission.payload.length,
+      currentBytes: current === null ? 0 : JSON.stringify(current).length,
+      candidateNodes: countNodes(candidate),
+      diffEntries: diff.length,
+    },
+    diff: diff.slice(0, REVIEW_DIFF_LIMIT),
+    diffTruncated: diff.length > REVIEW_DIFF_LIMIT,
+    diffBase: "latest-published",
+  };
+}
+
+/** 按需加载候选 payload（原始 JSON），供前端懒加载树视图。 */
+export async function loadReviewPayload(env: Env, submissionId: string): Promise<unknown> {
+  const submission = await getSubmissionById(env, submissionId);
+  return JSON.parse(submission.payload) as unknown;
+}
+
+/** 按需构建结构化只读渲染描述，供前端懒加载「结构化渲染」视图。 */
+export async function buildReviewRender(env: Env, submissionId: string): Promise<RenderField[]> {
+  const submission = await getSubmissionById(env, submissionId);
+  const schemaRow = await getSchemaVersion(env, submission.dataset_id, submission.schema_version);
+  const schema = JSON.parse(schemaRow.json_schema) as unknown;
+  return buildRender(schema, JSON.parse(submission.payload) as unknown);
+}

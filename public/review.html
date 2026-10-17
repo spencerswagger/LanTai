@@ -211,9 +211,9 @@
         LT.clear(detail);
         detail.appendChild(LT.skeleton(6));
 
-        LT.get(`/api/admin/submissions/${encodeURIComponent(id)}`)
-          .then((views) => {
-            renderDetail(detail, views || {});
+        LT.get(`/api/admin/submissions/${encodeURIComponent(id)}/summary`)
+          .then((summary) => {
+            renderDetail(detail, summary || {});
           })
           .catch((e) => {
             LT.clear(detail);
@@ -275,6 +275,56 @@
             panelMap[k].btn.setAttribute("tabindex", on ? "0" : "-1");
             panelMap[k].panel.hidden = !on;
           });
+          ensureTab(id);
+        }
+
+        var loaded = { diff: true };
+
+        function placeholder(text) {
+          return LT.el("p", { class: "muted", text: text });
+        }
+
+        /* 大 payload 不随首屏一次性返回：结构化/树视图在首次切换到该标签时按需加载。 */
+        function ensureTab(id) {
+          if (loaded[id]) return;
+          loaded[id] = true;
+          var panel = panelMap[id].panel;
+          LT.clear(panel);
+          panel.appendChild(LT.el("p", { class: "muted", text: "加载中…" }));
+          var path = id === "render" ? "render" : "payload";
+          LT.get(`/api/admin/submissions/${encodeURIComponent(state.id)}/${path}`)
+            .then((data) => {
+              var fields;
+              var tree;
+              LT.clear(panel);
+              if (id === "render") {
+                fields = data?.render || [];
+                if (fields.length) panel.appendChild(LT.renderFields(fields));
+                else panel.appendChild(placeholder("无可渲染字段（Schema 可能尚未提供展示信息）。"));
+              } else {
+                tree = data ? data.payload : null;
+                if (tree !== undefined && tree !== null) {
+                  panel.appendChild(LT.dataTree(tree, { collapsed: true }));
+                } else {
+                  panel.appendChild(placeholder("该提交暂无可展示的 JSON 内容。"));
+                }
+              }
+            })
+            .catch((e) => {
+              LT.clear(panel);
+              panel.appendChild(
+                LT.el("div", { class: "callout callout--danger" }, [
+                  LT.el("div", {}, [
+                    LT.el("strong", { text: "加载失败" }),
+                    LT.el("p", {
+                      class: "muted",
+                      style: "margin:0",
+                      text: (e?.message) || "请稍后重试。",
+                    }),
+                  ]),
+                ]),
+              );
+            });
         }
 
         [
@@ -306,30 +356,27 @@
           panels.appendChild(panel);
         });
 
-        var renderFields = views.render || [];
-        if (renderFields.length) {
-          panelMap.render.panel.appendChild(LT.renderFields(renderFields));
-        } else {
-          panelMap.render.panel.appendChild(
-            LT.el("p", { class: "muted", text: "无可渲染字段（Schema 可能尚未提供展示信息）。" }),
-          );
-        }
-
-        if (views.jsonTree !== undefined && views.jsonTree !== null) {
-          panelMap.tree.panel.appendChild(LT.dataTree(views.jsonTree, { collapsed: true }));
-        } else {
-          panelMap.tree.panel.appendChild(
-            LT.el("p", { class: "muted", text: "该提交暂无可展示的 JSON 内容。" }),
-          );
-        }
-
         panelMap.diff.panel.appendChild(
           LT.el("p", { class: "muted" }, [
             "对比基准：",
             LT.el("code", { text: views.diffBase || "latest-published" }),
           ]),
         );
-        panelMap.diff.panel.appendChild(LT.diffView(views.diff));
+        if (views.counts) {
+          panelMap.diff.panel.appendChild(
+            LT.el("p", {
+              class: "muted",
+              text:
+                `候选 ${LT.fmtNumber(views.counts.candidateBytes)} 字节 · ` +
+                `${LT.fmtNumber(views.counts.candidateNodes)} 节点 · ` +
+                `差异 ${LT.fmtNumber(views.counts.diffEntries)} 条` +
+                (views.diffTruncated ? "（仅显示前 200 条）" : ""),
+            }),
+          );
+        }
+        panelMap.diff.panel.appendChild(LT.diffView(views.diff || []));
+
+        ensureTab(order[0]);
 
         var reasonInput = LT.el("input", {
           class: "input",

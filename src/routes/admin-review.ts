@@ -3,7 +3,12 @@ import type { AppEnv } from "../env";
 import { asString, readJsonBody } from "../lib/body";
 import { currentActor } from "../middleware/access";
 import { promoteSubmission, rejectSubmission, stageSubmission } from "../review/actions";
-import { buildReviewViews } from "../review/views";
+import {
+  buildReviewRender,
+  buildReviewSummary,
+  buildReviewViews,
+  loadReviewPayload,
+} from "../review/views";
 import { listSubmissions } from "../submissions/repository";
 
 const DEFAULT_STATUSES = ["pending", "staged"];
@@ -40,6 +45,24 @@ reviewAdminRoutes.get("/submissions", async (c) => {
 reviewAdminRoutes.get("/submissions/:id", async (c) => {
   const views = await buildReviewViews(c.env, c.req.param("id"));
   return c.json(views);
+});
+
+/** 轻量摘要（大 payload 首屏用）：无完整 render/jsonTree/current，diff 截断。 */
+reviewAdminRoutes.get("/submissions/:id/summary", async (c) => {
+  const summary = await buildReviewSummary(c.env, c.req.param("id"));
+  return c.json(summary);
+});
+
+/** 按需加载候选 payload（原始 JSON），供前端懒加载树视图。 */
+reviewAdminRoutes.get("/submissions/:id/payload", async (c) => {
+  const payload = await loadReviewPayload(c.env, c.req.param("id"));
+  return c.json({ payload });
+});
+
+/** 按需构建结构化只读渲染描述。 */
+reviewAdminRoutes.get("/submissions/:id/render", async (c) => {
+  const render = await buildReviewRender(c.env, c.req.param("id"));
+  return c.json({ render });
 });
 
 reviewAdminRoutes.post("/submissions/:id/stage", async (c) => {
