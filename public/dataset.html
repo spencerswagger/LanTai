@@ -356,7 +356,9 @@
         var sizeEl = LT.el("span", { class: "muted mono", text: "快照大小 计算中…" });
         /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 又拿不到 content-length。 */
         (function fillSnapshotSize() {
-          fetch(absUrl, { method: "GET" })
+          /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 拿不到，
+             压缩后 content-length 也会被丢掉；reload 保证不用到缺头的旧缓存副本。 */
+          fetch(absUrl, { method: "GET", cache: "reload" })
             .then((res) => {
               var len =
                 res.headers.get("x-lantai-object-bytes") || res.headers.get("content-length");
