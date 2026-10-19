@@ -5,7 +5,7 @@ import { AppError } from "./lib/errors";
 import { errorBody } from "./lib/response";
 import { accessGuard } from "./middleware/access";
 import { handleScheduled } from "./ops/cron";
-import { r2KeyForPublicPath } from "./r2/keys";
+import { PLATFORM_INDEX_KEY, r2KeyForPublicPath } from "./r2/keys";
 import { adminApi } from "./routes/admin";
 import { healthApi } from "./routes/health";
 import { submissionsApi } from "./routes/submissions";
@@ -38,6 +38,55 @@ app.get("/admin", accessGuard, servePage("/admin.html"));
 app.get("/review", accessGuard, servePage("/review.html"));
 app.get("/ops", accessGuard, servePage("/ops.html"));
 app.get("/submit", servePage("/submit.html"));
+
+/**
+ * 站点地图：数据目录本身在 R2（index.json），故在请求时合成，
+ * 保证列出全部已发布数据集，不随静态文件过期。
+ */
+app.get("/sitemap.xml", async (c) => {
+  const origin = new URL(c.req.url).origin;
+  const urls: string[] = [`${origin}/`, `${origin}/search`, `${origin}/docs/`];
+  try {
+    const object = await c.env.BUCKET.get(PLATFORM_INDEX_KEY);
+    if (object) {
+      const index = await object.json<{
+        datasets?: { slug?: string; currentDataVersion?: string }[];
+      }>();
+      for (const d of index?.datasets ?? []) {
+        if (!d?.slug) continue;
+        urls.push(`${origin}/dataset?slug=${encodeURIComponent(d.slug)}`);
+        urls.push(`${origin}/${d.slug}/manifest.json`);
+        if (d.currentDataVersion) {
+          urls.push(
+            `${origin}/${d.slug}/versions/${encodeURIComponent(d.currentDataVersion)}.json`,
+          );
+        }
+      }
+    }
+  } catch {
+    /* 目录暂不可用时仍返回基础站点地图，不阻塞抓取。 */
+  }
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    urls.map((u) => `  <url><loc>${escapeXml(u)}</loc></url>`).join("\n") +
+    "\n</urlset>\n";
+  return new Response(xml, {
+    headers: {
+      "content-type": "application/xml; charset=utf-8",
+      "cache-control": "public, max-age=300",
+    },
+  });
+});
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
 
 /**
  * 开发态静态读取直通：仅当 ALLOW_DEV_STATIC=true 时启用，把平台数据路径映射到 R2 对象，
