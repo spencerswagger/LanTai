@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import SEED_SCRIPT_SRC from "../scripts/seed-demo.mjs?raw";
 import type { Env } from "../src/env";
 import {
   isJsonGuardPath,
@@ -11,7 +12,7 @@ import {
 import { callApp, json, postJson } from "./helpers";
 
 /**
- * 公开读取出口（契约 docs/contracts/public-read-egress.md，R1–R15）。
+ * 公开读取出口（契约 docs/contracts/public-read-egress.md，E1–E31）。
  * 注意：本文件**不依赖** ALLOW_DEV_STATIC——该开关已退役，读取出口在 dev/preprod/prod 语义一致。
  *
  * 纪律：每次读取都必须把响应体读完（R2 的 body 是流，不消费会残留 WAL 句柄）。
@@ -75,7 +76,7 @@ async function registerAndFreeze(slug: string): Promise<string> {
   return id;
 }
 
-describe("read egress · 空库（R1/R2）", () => {
+describe("read egress · 空库（E1/E5）", () => {
   it("合成空索引而非 404：/index.json 与 /search/index.json 恒 200", async () => {
     const index = await read("/index.json");
     expect(index.res.status).toBe(200);
@@ -92,7 +93,7 @@ describe("read egress · 空库（R1/R2）", () => {
   });
 });
 
-describe("read egress · 仅冻结未发布（R3/R7/R8/R10）", () => {
+describe("read egress · 仅冻结未发布（E3/E15/E8/E10）", () => {
   it("目录收录 hasData:false；搜索索引不含；latest 404；manifest 200", async () => {
     await registerAndFreeze("egress-frozen");
 
@@ -101,7 +102,7 @@ describe("read egress · 仅冻结未发布（R3/R7/R8/R10）", () => {
       (d) => d.slug === "egress-frozen",
     );
     expect(entry).toBeDefined();
-    // 键集白名单（R3/R6）：不得出现任何 payload 值。
+    // 键集白名单（E3/E25）：不得出现任何 payload 值。
     expect(Object.keys(entry as object).sort()).toEqual([
       "currentDataVersion",
       "currentSchemaVersion",
@@ -113,19 +114,19 @@ describe("read egress · 仅冻结未发布（R3/R7/R8/R10）", () => {
     expect(entry?.hasData).toBe(false);
     expect(entry?.currentDataVersion).toBeNull();
 
-    // R7：从未发布过数据 → 不在全局搜索索引。
+    // E6：从未发布过数据 → 不在全局搜索索引。
     const search = await read("/search/index.json");
     expect(
       (search.body.datasets as { slug: string }[]).some((d) => d.slug === "egress-frozen"),
     ).toBe(false);
 
-    // R7：/{slug}/search-index.json 该情形 404 JSON（不是 200 空对象）。
+    // E15：/{slug}/search-index.json 该情形 404 JSON（不是 200 空对象）。
     const perSlug = await read("/egress-frozen/search-index.json");
     expect(perSlug.res.status).toBe(404);
     expect(perSlug.body).toMatchObject({ error: { code: "not_found" } });
     expect(perSlug.res.headers.get("cache-control")).toBe("no-store");
 
-    // R8：未发布也要有 manifest；dataVersions 空、latest null、preview null、schema.url 可 200。
+    // E8：未发布也要有 manifest；dataVersions 空、latest null、preview null、schema.url 可 200。
     const manifest = await read("/egress-frozen/manifest.json");
     expect(manifest.res.status).toBe(200);
     expect(manifest.res.headers.get("cache-control")).toBe(CACHE.index);
@@ -140,7 +141,7 @@ describe("read egress · 仅冻结未发布（R3/R7/R8/R10）", () => {
     expect(schemaDoc.res.status).toBe(200);
     expect(schemaDoc.res.headers.get("cache-control")).toBe(CACHE.immutable);
 
-    // R10：仅冻结未发布 → latest 404 JSON，绝不 200 空对象。
+    // E10：仅冻结未发布 → latest 404 JSON，绝不 200 空对象。
     const latest = await read("/egress-frozen/latest.json");
     expect(latest.res.status).toBe(404);
     expect(latest.body).toMatchObject({ error: { code: "not_found" } });
@@ -153,7 +154,7 @@ describe("read egress · 仅冻结未发布（R3/R7/R8/R10）", () => {
   });
 });
 
-describe("read egress · 已发布（R6/R9/R10/R12）", () => {
+describe("read egress · 已发布（E25/E12/E10/E16）", () => {
   it("8 条路径的缓存头、404 语义与响应头白名单", async () => {
     const id = await registerAndFreeze("egress-pub");
     await postJson(`/api/admin/datasets/${id}/publish`, { payload: { name: "alice", age: 30 } });
@@ -165,7 +166,7 @@ describe("read egress · 已发布（R6/R9/R10/R12）", () => {
     const latest = await read("/egress-pub/latest.json");
     expect(latest.res.status).toBe(200);
     expect(latest.res.headers.get("cache-control")).toBe(CACHE.pointer);
-    // R10：latest 的 dataVersion 必须等于 manifest.latest。
+    // E10：latest 的 dataVersion 必须等于 manifest.latest。
     expect(latest.body.dataVersion).toBe(manifest.body.latest);
 
     const snapshot = await read("/egress-pub/versions/1.json");
@@ -174,7 +175,7 @@ describe("read egress · 已发布（R6/R9/R10/R12）", () => {
     expect(snapshot.body).toEqual({ name: "alice", age: 30 });
     expect(snapshot.res.headers.get("etag")).toBeTruthy();
 
-    // R9：同一 URL 两次读取字节一致；v1 不做 304（条件请求也只返回 200 全量）。
+    // E12 / E18：同一 URL 两次读取字节一致；v1 不做 304（条件请求也只返回 200 全量）。
     const again = await read("/egress-pub/versions/1.json");
     expect(again.text).toBe(snapshot.text);
     const conditional = await read("/egress-pub/versions/1.json", {
@@ -198,7 +199,7 @@ describe("read egress · 已发布（R6/R9/R10/R12）", () => {
     }
   });
 
-  it("R6：目录与搜索索引都不含 payload 值（哨兵串）", async () => {
+  it("E25：目录与搜索索引都不含 payload 值（哨兵串）", async () => {
     const id = await registerAndFreeze("egress-sentinel");
     await postJson(`/api/admin/datasets/${id}/publish`, {
       payload: { name: "SENTINEL-7f3a91", age: 7 },
@@ -209,7 +210,7 @@ describe("read egress · 已发布（R6/R9/R10/R12）", () => {
     expect(index.text).not.toContain("SENTINEL-7f3a91");
     expect(search.text).not.toContain("SENTINEL-7f3a91");
 
-    // R4：搜索索引 doc 键集白名单（多键即失败）。
+    // E6：搜索索引 doc 键集白名单（多键即失败）。
     const doc = (search.body.datasets as Record<string, unknown>[]).find(
       (d) => d.slug === "egress-sentinel",
     );
@@ -227,7 +228,7 @@ describe("read egress · 已发布（R6/R9/R10/R12）", () => {
   });
 });
 
-describe("read egress · 未登记 slug（R11）", () => {
+describe("read egress · 未登记 slug（E14）", () => {
   it("manifest / latest / versions / schemas 全 404 JSON，绝不回退成 HTML", async () => {
     for (const path of [
       "/nope-slug/manifest.json",
@@ -252,7 +253,7 @@ describe("read egress · 未登记 slug（R11）", () => {
   });
 });
 
-describe("read egress · 500 语义（R10：R2 抛错不得降级成 404）", () => {
+describe("read egress · 500 语义（E19：R2 抛错不得降级成 404）", () => {
   it("R2 抛错时目录 500 index_unavailable，其余读取路径 500 JSON", async () => {
     const broken = {
       get: async () => {
@@ -275,7 +276,7 @@ describe("read egress · 500 语义（R10：R2 抛错不得降级成 404）", ()
   });
 });
 
-describe("read egress · 缓存头来自 R2 元数据（R12/R13）", () => {
+describe("read egress · 缓存头来自 R2 元数据（E16/E17）", () => {
   it("cache-control 逐字节复制对象 httpMetadata；空库不落任何对象", async () => {
     await registerAndFreeze("egress-meta");
     // 写侧元数据是唯一来源：读取侧不得自行分层（也不得再包一层自持缓存）。
@@ -289,7 +290,7 @@ describe("read egress · 缓存头来自 R2 元数据（R12/R13）", () => {
     expect(await env.BUCKET.head(SEARCH_INDEX_KEY)).toBeNull();
   });
 });
-describe("read egress · 发布后立即可见（R13）", () => {
+describe("read egress · 发布后立即可见（E17）", () => {
   it("publish 后带 no-cache 取 latest / index / search-index 立即是新值", async () => {
     const id = await registerAndFreeze("egress-fresh");
     await postJson(`/api/admin/datasets/${id}/publish`, { payload: { name: "v1", age: 1 } });
@@ -324,7 +325,7 @@ describe("read egress · 发布后立即可见（R13）", () => {
   });
 });
 
-describe("read egress · 路由匹配（R11 宽松匹配）", () => {
+describe("read egress · 路由匹配（E14 宽松匹配）", () => {
   it("任意 slug 形态都归读取出口；非读取路径不接管", () => {
     for (const path of [
       "/index.json",
@@ -412,7 +413,7 @@ describe("read egress · 路由匹配（R11 宽松匹配）", () => {
   });
 });
 
-describe("read egress · `.json` 守卫（R11 加强 + E21(a)：404 恒 JSON，永不 HTML）", () => {
+describe("read egress · `.json` 守卫（E14 加强 + E21(a)：404 恒 JSON，永不 HTML）", () => {
   it("未命中家族但以 .json 结尾（含尾斜杠形态）→ JSON 404 + no-store", async () => {
     for (const path of [
       "/nope.json",
@@ -532,6 +533,45 @@ describe("read egress · 方法语义（GET / HEAD，其余 405）", () => {
   });
 });
 
+describe("read egress · 非读取族的非 GET/HEAD（契约 §1.3 405 行注 / E31 第 5 项）", () => {
+  /* 405 只留给「命中读取家族但方法不对」；未进家族的非 GET/HEAD 必须 404 且恒 JSON + no-store。
+     不显式兜住时，Hono 会对已注册的页面路由（/admin 等）按方法不匹配回 405（且 body 非 JSON）。 */
+  it("未命中家族的非 GET/HEAD → 404 not_found + no-store（不是 405，无 allow 头）", async () => {
+    for (const path of ["/admin", "/admin.html", "/styles.css", "/submit", "/nope"]) {
+      for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+        const { res, body, text } = await read(path, { method });
+        expect(res.status, `${method} ${path}`).toBe(404);
+        expect(res.headers.get("cache-control")).toBe("no-store");
+        expect(res.headers.get("allow")).toBeNull();
+        expect(text.startsWith("{")).toBe(true);
+        expect(body).toMatchObject({ error: { code: "not_found" } });
+        assertHeaderWhitelist(res);
+      }
+    }
+  });
+
+  it("未命中的 /api/* 不受影响：仍由接口层回 404「接口不存在」", async () => {
+    const { res, body } = await read("/api/no-such-endpoint", { method: "POST" });
+    expect(res.status).toBe(404);
+    expect(body).toMatchObject({ error: { code: "not_found" } });
+  });
+});
+
+describe("read egress · 种子护栏（T6 / E28：机制级拒绝 prod）", () => {
+  it("seed-demo.mjs 先问服务端 environment，不在白名单即硬退出（先判后连）", () => {
+    expect(SEED_SCRIPT_SRC).toContain("/api/health");
+    expect(SEED_SCRIPT_SRC).toMatch(/ALLOWED_ENVIRONMENTS/);
+    expect(SEED_SCRIPT_SRC).toMatch(/"development", "test", "preprod"/);
+    const mainIdx = SEED_SCRIPT_SRC.indexOf("async function main()");
+    const guardIdx = SEED_SCRIPT_SRC.indexOf("assertSeedableTarget()", mainIdx);
+    const adminIdx = SEED_SCRIPT_SRC.indexOf("seedOne(", mainIdx);
+    expect(mainIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeGreaterThan(mainIdx);
+    /* 守卫必须在任何管理 API 调用之前：跑到一半才被拒会留下半成品数据。 */
+    expect(guardIdx).toBeLessThan(adminIdx);
+  });
+});
+
 describe("read egress · 500 错误码（契约 §1.3）", () => {
   it("R2 抛错：目录 / 搜索索引 / 其余路径各自用专属码，且一律 no-store", async () => {
     const broken = {
@@ -577,7 +617,7 @@ describe("read egress · 500 错误码（契约 §1.3）", () => {
   });
 });
 
-describe("read egress · 响应头纪律与兜底（R12/R15）", () => {
+describe("read egress · 响应头纪律与兜底（E16/E29）", () => {
   it("content-type 恒为 application/json; charset=utf-8（不吃对象元数据里的其他值）", async () => {
     await env.BUCKET.put(manifestKey("egress-ctype"), JSON.stringify({ slug: "egress-ctype" }), {
       httpMetadata: { contentType: "text/html", cacheControl: CACHE.index },

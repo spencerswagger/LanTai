@@ -376,7 +376,7 @@
             ? "正在检索数据内容…"
             : "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。";
         } else {
-          /* R1：空库恒显示「暂无已发布数据集」；故障态见 renderCatalogError（「目录索引暂不可用」），
+          /* E1：空库恒显示「暂无已发布数据集」；故障态见 renderCatalogError（「目录索引暂不可用」），
              两组文案互斥——故障绝不呈现成空目录。 */
           none.textContent = "暂无已发布数据集";
           const sub = document.createElement("p");
@@ -419,7 +419,7 @@
             if (it.d.hasData) {
               dsc = `${it.d.slug} · ${fieldCount} 个字段 · 最新快照 v${it.d.dataVersion}`;
             } else {
-              /* R3：未发布行显式呈现「尚无数据」，且样式与已发布行可区分（行加 opt--empty）。 */
+              /* E4：未发布行显式呈现「尚无数据」，且样式与已发布行可区分（行加 opt--empty）。 */
               row.classList.add("opt--empty");
               badge = `<span class="why why--empty">尚无数据</span>${badge}`;
               dsc = `${it.d.slug} · ${fieldCount} 个字段 · 尚无数据（仅冻结 Schema，未发布数据）`;
@@ -442,7 +442,7 @@
             '<span class="tail">' + esc(tail) + "</span>";
           row.appendChild(hrow);
 
-          /* R3：已发布行给出可点击的快照入口（固定版本快照地址，immutable）。 */
+          /* E4：已发布行给出可点击的快照入口（固定版本快照地址，immutable）。 */
           if (g.kind === "ds" && it.d.hasData && it.d.dataVersion) {
             const snap = document.createElement("a");
             snap.className = "tail tail--link";
@@ -580,7 +580,7 @@
       });
     }
 
-    /* ---------- 载入目录（M1：加载态 / 失败态 / 重试；R1/R2：空 ≠ 坏，故障绝不呈现为「空目录」） ---------- */
+    /* ---------- 载入目录（M1：加载态 / 失败态 / 重试；E1/E2：空 ≠ 坏，故障绝不呈现为「空目录」） ---------- */
     function renderCatalogSkeleton() {
       resultsEl.textContent = "";
       const wrap = document.createElement("div"); wrap.className = "cards";
@@ -592,7 +592,7 @@
       resultsEl.appendChild(wrap);
     }
 
-    /* R2：只有「目录索引拿不到」才算坏。文案与 R1 的空态互斥。 */
+    /* E2：只有「目录索引拿不到」才算坏。文案与 E1 的空态互斥。 */
     function renderCatalogError(reason) {
       resultsEl.textContent = "";
       const box = document.createElement("div");
@@ -646,7 +646,7 @@
       renderCatalogSkeleton();
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 10000);
-      /* 读取出口对 /index.json 恒 200（对象缺失时合成空索引），因此非 200 一律是「坏了」（R1/R2）。 */
+      /* 读取出口对 /index.json 恒 200（对象缺失时合成空索引），因此非 200 一律是「坏了」（E1 / E2）。 */
       fetch("/index.json", { headers: { accept: "application/json" }, signal: ctl.signal })
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then((index) => {

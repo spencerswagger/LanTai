@@ -75,7 +75,7 @@ export function r2KeyForPublicPath(pathname: string): string | null {
  * 读取出口的路由族（宽松匹配）。与 `r2KeyForPublicPath` 的区别：
  * slug / 版本段只是「非空单段」，不校验字符集，也不做 D1 反查——
  * 未登记或形态奇怪的 slug 也必须落读取出口并得到 404 JSON，
- * 而不是回退成资产层的 200 HTML（R11）。
+ * 而不是回退成资产层的 200 HTML（E14 / E21）。
  */
 const READ_EGRESS_PATTERNS: RegExp[] = [
   /^index\.json$/,

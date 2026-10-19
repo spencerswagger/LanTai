@@ -109,24 +109,27 @@ function escapeXml(text: string): string {
 }
 
 /**
- * 公开读取出口（契约 docs/contracts/public-read-egress.md，R1–R15）：
+ * 公开读取出口（契约 docs/contracts/public-read-egress.md，E1–E31）：
  * 8 类读取路径由**同源 Worker 从 R2 直出**，排在资产兜底之前。
  *
  * 实现纪律（供 Hawk 断言）：
- *  - 不查 D1、不做 payload 计算、不做鉴权；slug/版本合法性不反查，对象不存在即 404；
- *  - 仅 GET / HEAD（HEAD 由 Hono 按 GET 处理后剥体）；其余方法 405 `method_not_allowed` + `allow`；
- *  - `cache-control` 逐字节复制 R2 对象 `httpMetadata`，仅缺失时用 `cacheControlForKey` 兜底；
- *  - 不引入自持缓存（不用 Cache API / KV 缓存读取响应），否则 R13「发布后立即可见」不成立；
- *  - v1 不做条件请求（不做 304、忽略 query、不协商 Accept），保证 R9 的字节稳定性；
- *  - 响应头白名单 = content-type / cache-control / etag，禁止任何 `x-lantai-*`。
+ *  - 不查 D1、不做 payload 计算、不做鉴权；slug/版本合法性不反查，对象不存在即 404（E14）；
+ *  - 仅 GET / HEAD（HEAD 用 `bucket.head`，不开体流），**命中读取家族**的其余方法
+ *    405 `method_not_allowed` + `allow: GET, HEAD`（E31 第 1、2 项）；
+ *  - `cache-control` 逐字节复制 R2 对象 `httpMetadata`，仅缺失时用 `cacheControlForKey` 兜底（E16）；
+ *  - 不引入自持缓存（不用 Cache API / KV 缓存读取响应），否则 E17「发布后立即可见」不成立（E18）；
+ *  - v1 不做条件请求（不做 304、忽略 query、不协商 Accept），保证 E12 / E18 的字节稳定性；
+ *  - 响应头白名单 = content-type / cache-control / etag，禁止任何 `x-lantai-*`（E29）；
+ *  - **一切非 2xx 一律 `no-store`**，且 404 永不含 `immutable`（E16 / E19）。
  */
 app.all("*", async (c, next) => {
   const pathname = new URL(c.req.url).pathname;
   const key = readEgressKeyForPath(pathname);
+  const method = c.req.method.toUpperCase();
+  const isReadMethod = method === "GET" || method === "HEAD";
 
   if (key) {
-    const method = c.req.method.toUpperCase();
-    if (method !== "GET" && method !== "HEAD") {
+    if (!isReadMethod) {
       return readEgressResponse(
         errorBody("method_not_allowed", "公开读取出口只支持 GET / HEAD"),
         405,
@@ -142,6 +145,15 @@ app.all("*", async (c, next) => {
      **永不**回退成资产层的 HTML / 空 body。尾斜杠形态**不是**别名（E21(a)：`/acc-b/manifest.json/`
      即使对象存在也必须 404）。 */
   if (isJsonGuardPath(pathname)) {
+    return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
+  }
+
+  /* 契约 §1.3 405 行注 + 验收 E31 第 5 项：**未命中读取家族**的非 GET / HEAD 一律 **404**（不是 405），
+     也必须是 JSON + `no-store` —— 405 只留给「命中读取家族但方法不对」的情形。
+     不显式兜住时，Hono 会对已注册的页面路由（`/admin` 等）按「方法不匹配」回 405 且 body 非 JSON。
+     `/api/*` 不在此列：接口路由在更早注册处已终结响应，未命中的 API 路径仍由下方
+     `app.all("/api/*")` 回 404「接口不存在」（口径不变，避免动写侧）。 */
+  if (!isReadMethod && !pathname.startsWith("/api/")) {
     return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
   }
 
@@ -161,7 +173,7 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
  */
 const NOT_FOUND_MESSAGE = "该地址没有可公开读取的对象";
 
-/** 空目录 / 空搜索索引的合成结果：空 ≠ 坏（R1），永不 404。 */
+/** 空目录 / 空搜索索引的合成结果：空 ≠ 坏（E1 / E5），永不 404。 */
 const SYNTHETIC_EMPTY_INDEX = { generatedAt: "", datasets: [] };
 
 /** 读取出口的 500 错误码（契约 §1.3）：1/2 用各自的不可用码，其余一律 `read_unavailable`。 */
@@ -198,7 +210,7 @@ async function serveR2Read(bucket: R2Bucket, key: string, method: string): Promi
   try {
     object = bodyless ? await bucket.head(key) : await bucket.get(key);
   } catch (error) {
-    /* R2 抛错 = 真的坏了：500 JSON，绝不降级成 404，也不合成空索引（R10）。 */
+    /* R2 抛错 = 真的坏了：500 JSON，绝不降级成 404，也不合成空索引（E19）。 */
     console.error("read_egress_r2_error", key, error);
     return readEgressResponse(
       errorBody(readFailureCode(key), "读取静态发布物失败，请稍后重试"),
