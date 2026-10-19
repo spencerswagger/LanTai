@@ -5,7 +5,7 @@ import { ConflictError, NotFoundError } from "../lib/errors";
 import { nowIso } from "../lib/ids";
 import { upsertCatalogEntry } from "../r2/catalog";
 import { buildManifest, type ManifestDataVersion, writeManifest } from "../r2/manifest";
-import { type LatestPointer, writeLatestPointer } from "./pointer";
+import { type LatestPointer, readPreviewPointer, writeLatestPointer } from "./pointer";
 import { getDataVersion, listPublishedDataVersions } from "./repository";
 
 export interface RollbackResult {
@@ -59,7 +59,8 @@ export async function rollbackDataset(
     }),
   ]);
 
-  const preview = dataset.current_preview_version ?? null;
+  /* preview 的唯一权威 = preview.json 指针（E11 / T12）；DB 列 current_preview_version 非权威。 */
+  const preview = (await readPreviewPointer(env.BUCKET, dataset.slug))?.dataVersion ?? null;
   const versions = await listPublishedDataVersions(env, datasetId);
   const dataVersions: ManifestDataVersion[] = versions.map((row) => ({
     version: row.version,

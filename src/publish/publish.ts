@@ -49,7 +49,8 @@ function assertValidPayload(schemaJson: string, payload: unknown): void {
 
 function toManifestVersions(
   rows: DataVersionRow[],
-  latest: string,
+  /** 当前 latest 版本号；stage 时数据集可能还没发布过任何版本，故允许 null。 */
+  latest: string | null,
   preview: string | null,
 ): ManifestDataVersion[] {
   return rows.map((row) => ({
@@ -123,10 +124,9 @@ export async function publishDataset(
     }),
   ]);
 
-  const preview =
-    dataset.current_preview_version ??
-    (await readPreviewPointer(env.BUCKET, dataset.slug))?.dataVersion ??
-    null;
+  /* preview 的唯一权威 = `/{slug}/preview.json` 指针（E11 / T12）：DB 列 `current_preview_version`
+     降级为非权威的内部状态，不得再作为写 manifest 的来源；无指针 → null。 */
+  const preview = (await readPreviewPointer(env.BUCKET, dataset.slug))?.dataVersion ?? null;
   const versions = await listPublishedDataVersions(env, datasetId);
   const manifest = buildManifest({
     slug: dataset.slug,
@@ -197,6 +197,25 @@ export async function stageDataset(
       target: `${dataset.slug}@${version}`,
     }),
   ]);
+
+  /*
+   * M5b（E11 / T12）：stage 必须回写 manifest，固定顺序「不可变快照 → preview.json 指针 → DB → manifest」，
+   * 保证「manifest 说 preview 非空 ⟹ 指针已存在」，不留悬空引用。
+   * 与 E10（latest.json ⇔ manifest.latest）对称：manifest 是指针的发现入口，
+   * 允许滞后会把「预览不可枚举」退化成「预览不可达」。
+   * preview 快照不进 dataVersions[]（只经 manifest.preview 拼路径可达）。
+   */
+  const latest = dataset.current_data_version ?? null;
+  const versions = await listPublishedDataVersions(env, datasetId);
+  const manifest = buildManifest({
+    slug: dataset.slug,
+    title: dataset.title,
+    schemaVersion,
+    dataVersions: toManifestVersions(versions, latest, version),
+    latest,
+    preview: version,
+  });
+  await writeManifest(env.BUCKET, manifest);
 
   return { version, pointer };
 }

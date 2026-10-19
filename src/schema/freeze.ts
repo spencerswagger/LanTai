@@ -8,6 +8,7 @@ import type { Env } from "../env";
 import { auditStatement } from "../lib/audit";
 import { ConflictError } from "../lib/errors";
 import { nowIso } from "../lib/ids";
+import { readPreviewPointer } from "../publish/pointer";
 import { listPublishedDataVersions } from "../publish/repository";
 import { type CatalogIndex, upsertCatalogEntry } from "../r2/catalog";
 import { schemaKey } from "../r2/keys";
@@ -99,7 +100,9 @@ export async function freezeSchemaVersion(
    * 否则会出现 latest 不在 dataVersions[] 里的非法清单（R8 不变式：latest ∈ {null} ∪ dataVersions[].version）。
    * preview 快照不进 dataVersions[]（上层已定：preview 不进，isPreview v1 恒 false）。
    */
-  const previewVersion = dataset.current_preview_version ?? null;
+  /* preview 的唯一权威 = preview.json 指针（E11 / T12）：re-freeze 也不能让 manifest.preview
+     与指针脱钩（否则读者经 manifest.preview 拼路径会拿到 404）。 */
+  const previewVersion = (await readPreviewPointer(env.BUCKET, dataset.slug))?.dataVersion ?? null;
   const publishedVersions = await listPublishedDataVersions(env, datasetId);
   const manifest = buildManifest({
     slug: dataset.slug,

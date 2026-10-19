@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import SEED_SCRIPT_SRC from "../scripts/seed-demo.mjs?raw";
 import type { Env } from "../src/env";
+import { sha256Hex } from "../src/lib/hash";
 import {
   isJsonGuardPath,
   manifestKey,
@@ -647,5 +648,79 @@ describe("read egress · 响应头纪律与兜底（E16/E29）", () => {
     const index = await callApp("/egress-fallback/search-index.json");
     expect(index.headers.get("cache-control")).toBe(CACHE.index);
     await index.text();
+  });
+});
+
+describe("read egress · E11 预览可达（T12 收窄版：preview 唯一权威 = preview.json 指针）", () => {
+  it("stage 后：preview.json 200(60+must-revalidate) 且 manifest.preview === preview.dataVersion；快照 immutable 且字节稳定", async () => {
+    const id = await registerAndFreeze("egress-preview");
+    await postJson(`/api/admin/datasets/${id}/publish`, { payload: { name: "v1", age: 1 } });
+
+    const staged = await postJson(`/api/admin/datasets/${id}/stage`, {
+      payload: { name: "preview-only", age: 9 },
+    });
+    const { previewVersion } = await json<{ previewVersion: string }>(staged);
+    expect(previewVersion.startsWith("preview-")).toBe(true);
+
+    /* 源站态读取（no-cache），不承诺缓存客户端同时刻一致。 */
+    const pointer = await read("/egress-preview/preview.json", {
+      headers: { "cache-control": "no-cache" },
+    });
+    expect(pointer.res.status).toBe(200);
+    expect(pointer.res.headers.get("cache-control")).toBe(CACHE.pointer);
+    expect(pointer.body.dataVersion).toBe(previewVersion);
+
+    const manifest = await read("/egress-preview/manifest.json", {
+      headers: { "cache-control": "no-cache" },
+    });
+    // T12：两处必须相等，不允许「良性滞后」。
+    expect(manifest.body.preview).toBe(pointer.body.dataVersion);
+    // E9：preview 快照不进 dataVersions[]，也不冒充 latest。
+    expect(manifest.body.latest).toBe("1");
+    expect((manifest.body.dataVersions as { version: string }[]).map((v) => v.version)).toEqual([
+      "1",
+    ]);
+
+    // 经 manifest.preview 拼路径可达：200 + immutable，同 URL 两次 sha256 相同。
+    const snapUrl = `/egress-preview/versions/${String(manifest.body.preview)}.json`;
+    const snap = await read(snapUrl);
+    expect(snap.res.status).toBe(200);
+    expect(snap.res.headers.get("cache-control")).toBe(CACHE.immutable);
+    expect(JSON.parse(snap.text)).toEqual({ name: "preview-only", age: 9 });
+    const again = await read(snapUrl);
+    expect(await sha256Hex(again.text)).toBe(await sha256Hex(snap.text));
+  });
+
+  it("stage 一次都没发生时：preview.json 404 + no-store 且 manifest.preview === null", async () => {
+    await registerAndFreeze("egress-nopreview");
+
+    const manifest = await read("/egress-nopreview/manifest.json", {
+      headers: { "cache-control": "no-cache" },
+    });
+    expect(manifest.res.status).toBe(200);
+    expect(manifest.body.preview).toBeNull();
+
+    const pointer = await read("/egress-nopreview/preview.json", {
+      headers: { "cache-control": "no-cache" },
+    });
+    expect(pointer.res.status).toBe(404);
+    expect(pointer.res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("再发布一版后 manifest.preview 仍等于指针（不被 publish 抹掉）", async () => {
+    const id = await registerAndFreeze("egress-preview-keep");
+    const staged = await postJson(`/api/admin/datasets/${id}/stage`, {
+      payload: { name: "keep-me", age: 2 },
+    });
+    const { previewVersion } = await json<{ previewVersion: string }>(staged);
+    await postJson(`/api/admin/datasets/${id}/publish`, { payload: { name: "v1", age: 1 } });
+
+    const manifest = await read("/egress-preview-keep/manifest.json");
+    const pointer = await read("/egress-preview-keep/preview.json");
+    expect(manifest.body.preview).toBe(previewVersion);
+    expect(manifest.body.preview).toBe(pointer.body.dataVersion);
+    expect((manifest.body.dataVersions as { version: string }[]).map((v) => v.version)).toEqual([
+      "1",
+    ]);
   });
 });
