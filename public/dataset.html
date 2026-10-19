@@ -384,19 +384,18 @@
         var absUrl = location.origin + rawUrl;
 
         var sizeEl = LT.el("span", { class: "muted mono", text: "快照大小 计算中…" });
-        /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 拿不到，
-           压缩后 content-length 也会被丢掉；reload 保证不用到缺头的旧缓存副本。 */
+        /* 字节数就地从**响应体**算：快照对象存的就是发布时 JSON.stringify 的 UTF-8 字节，
+           因此正文长度 = 对象字节数，且与 CDN 是否压缩、是否透传 content-length 无关。
+           （不再依赖任何响应头：读取出口只允许 content-type / cache-control / etag，
+           自定义头会被契约判定为违规；reload 保证不用到缓存的旧副本。） */
         fetch(absUrl, { method: "GET", cache: "reload" })
           .then((res) => {
-            var len =
-              res.headers.get("x-lantai-object-bytes") || res.headers.get("content-length");
-            if (res.body && res.body.cancel) {
-              try { res.body.cancel(); } catch (e) {}
-            }
-            var n = len ? Number(len) : NaN;
-            sizeEl.textContent = Number.isFinite(n)
-              ? `快照大小 ${typeof LT.fmtNumber === "function" ? LT.fmtNumber(n) : n.toLocaleString("zh-CN")} 字节`
-              : "快照大小 —";
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.text();
+          })
+          .then((text) => {
+            var n = new TextEncoder().encode(text).length;
+            sizeEl.textContent = `快照大小 ${typeof LT.fmtNumber === "function" ? LT.fmtNumber(n) : n.toLocaleString("zh-CN")} 字节`;
           })
           .catch(() => { sizeEl.textContent = "快照大小 —"; });
 
@@ -469,13 +468,13 @@
             }),
             LT.el("details", {}, [
               LT.el("summary", { text: "展开可复制的离线重算命令" }),
-              LT.el("pre", { class: "result", text: RECOMPUTE_CMD + `${latestVersion || "N"}.json` }),
+              LT.el("pre", { class: "result", text: `${RECOMPUTE_CMD}${latestVersion || "N"}.json` }),
               LT.el("div", { class: "cluster", style: "margin-top:var(--s3)" }, [
                 LT.el("button", {
                   class: "btn btn--sm",
                   type: "button",
                   text: "复制重算命令",
-                  onclick: () => { copyText(RECOMPUTE_CMD + `${latestVersion || "N"}.json`, "已复制重算命令"); },
+                  onclick: () => { copyText(`${RECOMPUTE_CMD}${latestVersion || "N"}.json`, "已复制重算命令"); },
                 }),
               ]),
             ]),
