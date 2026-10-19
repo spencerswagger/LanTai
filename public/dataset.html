@@ -345,7 +345,37 @@
         return card;
       }
 
-      /* M3：详情页首屏即给出「版本 + 哈希前 8 位 + 下载 + 复制链接」，无需二级滚动。 */
+      /* 稳定序列化：与平台侧一致（对象键递归按字典序排序，JSON.stringify 无多余空白）。 */
+      function ltSortKeys(value) {
+        if (Array.isArray(value)) return value.map(ltSortKeys);
+        if (value !== null && typeof value === "object") {
+          const out = {};
+          Object.keys(value).sort().forEach((k) => { out[k] = ltSortKeys(value[k]); });
+          return out;
+        }
+        return value;
+      }
+      function ltStableStringify(value) { return JSON.stringify(ltSortKeys(value)); }
+      function ltToHex(buf) {
+        return Array.prototype.map
+          .call(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      }
+      async function ltContentHash(payload) {
+        var bytes = new TextEncoder().encode(ltStableStringify(payload));
+        return ltToHex(await crypto.subtle.digest("SHA-256", bytes));
+      }
+
+      /* 离线复算命令：与页面同口径，可在本地对下载到的快照复查。 */
+      var RECOMPUTE_CMD =
+        "node -e 'const c=require(\"crypto\"),f=require(\"fs\");" +
+        "const s=(v)=>Array.isArray(v)?v.map(s):(v!==null&&typeof v==\"object\"" +
+        "?Object.keys(v).sort().reduce((o,k)=>(o[k]=s(v[k]),o),{}):v);" +
+        "console.log(c.createHash(\"sha256\")" +
+        ".update(JSON.stringify(s(JSON.parse(f.readFileSync(process.argv[1],\"utf8\")))))" +
+        ".digest(\"hex\"))' ";
+
+      /* M2：详情页首屏即给出「版本 + 哈希前 8 位 + 大小 + 下载 + 复制链接 + 原地重算」。 */
       function verifyBar(manifest, latestVersion, contentHash) {
         var hash8 = contentHash ? String(contentHash).slice(0, 8) : "—";
         var rawUrl = latestVersion
@@ -354,24 +384,69 @@
         var absUrl = location.origin + rawUrl;
 
         var sizeEl = LT.el("span", { class: "muted mono", text: "快照大小 计算中…" });
-        /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 又拿不到 content-length。 */
-        (function fillSnapshotSize() {
-          /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 拿不到，
-             压缩后 content-length 也会被丢掉；reload 保证不用到缺头的旧缓存副本。 */
-          fetch(absUrl, { method: "GET", cache: "reload" })
-            .then((res) => {
-              var len =
-                res.headers.get("x-lantai-object-bytes") || res.headers.get("content-length");
-              if (res.body && res.body.cancel) {
-                try { res.body.cancel(); } catch (e) {}
-              }
-              var n = len ? Number(len) : NaN;
-              sizeEl.textContent = Number.isFinite(n)
-                ? `快照大小 ${typeof LT.fmtNumber === "function" ? LT.fmtNumber(n) : n.toLocaleString("zh-CN")} 字节`
-                : "快照大小 —";
+        /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 拿不到，
+           压缩后 content-length 也会被丢掉；reload 保证不用到缺头的旧缓存副本。 */
+        fetch(absUrl, { method: "GET", cache: "reload" })
+          .then((res) => {
+            var len =
+              res.headers.get("x-lantai-object-bytes") || res.headers.get("content-length");
+            if (res.body && res.body.cancel) {
+              try { res.body.cancel(); } catch (e) {}
+            }
+            var n = len ? Number(len) : NaN;
+            sizeEl.textContent = Number.isFinite(n)
+              ? `快照大小 ${typeof LT.fmtNumber === "function" ? LT.fmtNumber(n) : n.toLocaleString("zh-CN")} 字节`
+              : "快照大小 —";
+          })
+          .catch(() => { sizeEl.textContent = "快照大小 —"; });
+
+        var checkOut = LT.el("p", { class: "hint", style: "margin:0", role: "status", "aria-live": "polite" });
+
+        var recomputeBtn = LT.el("button", {
+          class: "btn btn--sm",
+          type: "button",
+          text: "在页面上重算",
+        });
+        recomputeBtn.addEventListener("click", () => {
+          LT.busy(recomputeBtn, true);
+          checkOut.textContent = "正在取回快照并按稳定序列化重算…";
+          fetch(rawUrl, { cache: "reload" })
+            .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+            .then((payload) => ltContentHash(payload))
+            .then((hex) => {
+              var same = !!contentHash && hex === contentHash;
+              checkOut.textContent = same
+                ? `重算结果 ${hex.slice(0, 8)}… 与页面显示、与指针一致 ✅ 这一版内容未被改动。`
+                : `重算结果 ${hex.slice(0, 8)}… 与页面显示值不一致 ❌（页面值 ${hash8}）`;
             })
-            .catch(() => { sizeEl.textContent = "快照大小 —"; });
-        })();
+            .catch((err) => {
+              checkOut.textContent = `重算失败：${(err && err.message) || "无法取回快照"}。`;
+            })
+            .finally(() => { LT.busy(recomputeBtn, false); });
+        });
+
+        var rowChildren = [
+          LT.el("span", {
+            class: "tag tag--published mono",
+            text: latestVersion ? `最新数据 v${latestVersion}` : "尚无已发布数据",
+          }),
+          LT.el("span", { class: "muted", text: "内容哈希" }),
+          LT.el("code", { class: "mono", text: hash8, title: contentHash || "" }),
+          sizeEl,
+          LT.el("a", {
+            class: "btn btn--sm btn--primary",
+            href: rawUrl,
+            download: "",
+            text: "下载快照 JSON",
+          }),
+          LT.el("button", {
+            class: "btn btn--sm",
+            type: "button",
+            text: "复制快照链接",
+            onclick: () => { copyText(absUrl, "已复制快照链接"); },
+          }),
+        ];
+        if (latestVersion && contentHash) rowChildren.push(recomputeBtn);
 
         var card = LT.el("div", { class: "card" });
         card.appendChild(
@@ -382,32 +457,29 @@
         );
         card.appendChild(
           LT.el("div", { class: "card__body stack" }, [
-            LT.el("div", { class: "cluster" }, [
-              LT.el("span", {
-                class: "tag tag--published mono",
-                text: latestVersion ? `最新数据 v${latestVersion}` : "尚无已发布数据",
-              }),
-              LT.el("span", { class: "muted", text: "内容哈希" }),
-              LT.el("code", { class: "mono", text: hash8, title: contentHash || "" }),
-              sizeEl,
-              LT.el("a", {
-                class: "btn btn--sm btn--primary",
-                href: rawUrl,
-                download: "",
-                text: "下载快照 JSON",
-              }),
-              LT.el("button", {
-                class: "btn btn--sm",
-                type: "button",
-                text: "复制快照链接",
-                onclick: () => { copyText(absUrl, "已复制快照链接"); },
-              }),
-            ]),
+            LT.el("div", { class: "cluster" }, rowChildren),
             LT.el("p", {
               class: "hint",
               style: "margin:0",
-              text: "如何自行核对：按上面的地址下载快照，本地重算内容哈希，其前 8 位与页面显示一致、字节数与上面一致，即说明这一版内容未被改动。",
+              text:
+                "如何自行核对（口径 = 稳定序列化）：① 下载上面的快照 JSON；" +
+                "② 递归把对象键按字典序排序后 JSON.stringify（数组保序、无多余空白、UTF-8）；" +
+                "③ 对结果算 sha256，其前 8 位应与上方「内容哈希」一致 ⇒ 这一版内容未被改动。" +
+                "注意：直接对下载到的原始字节算 sha256 会得到不同值，不属本口径。",
             }),
+            LT.el("details", {}, [
+              LT.el("summary", { text: "展开可复制的离线重算命令" }),
+              LT.el("pre", { class: "result", text: RECOMPUTE_CMD + `${latestVersion || "N"}.json` }),
+              LT.el("div", { class: "cluster", style: "margin-top:var(--s3)" }, [
+                LT.el("button", {
+                  class: "btn btn--sm",
+                  type: "button",
+                  text: "复制重算命令",
+                  onclick: () => { copyText(RECOMPUTE_CMD + `${latestVersion || "N"}.json`, "已复制重算命令"); },
+                }),
+              ]),
+            ]),
+            checkOut,
           ]),
         );
         return card;
