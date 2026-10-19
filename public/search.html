@@ -204,10 +204,12 @@
           return;
         }
 
-        if (q && matched.length > 40) {
+        if (q && (matched.length > 40 || (q.length < 3 && docs.some((d) => (d.termCount || 0) > 5000)))) {
           const hint = LT.el("div", { class: "callout callout--info" }, [
             LT.el("div", { class: "stack", style: "margin:0" }, [
-              LT.el("strong", { text: `结果过多（${matched.length} 项），请缩小范围` }),
+              LT.el("strong", {
+                text: matched.length > 40 ? `结果过多（${matched.length} 项），请缩小范围` : "关键词过宽，请缩小范围",
+              }),
               LT.el("p", {
                 class: "muted",
                 style: "margin:0",

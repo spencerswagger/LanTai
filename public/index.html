@@ -436,14 +436,17 @@
       scopeEl.textContent = (term ? `命中 ${n} 项` : `共 ${docs.length} 个数据集`) +
         " · 搜索范围：数据集名称、字段与数据内容";
 
-      /* M2：宽泛关键词命中过多时给出明确提示，避免「页面卡住」的错觉。 */
-      if (term && n > 40) {
+      /* M2：宽泛关键词（或命中过多）时给出明确提示，避免「页面卡住」的错觉。 */
+      const heavyIndex = docs.some((d) => (d.termCount || 0) > 5000);
+      const tooBroad = !!term && (n > 40 || (term.length < 3 && heavyIndex));
+      if (tooBroad) {
         const hint = document.createElement("div");
         hint.className = "callout callout--info";
         const hi = document.createElement("div"); hi.className = "stack"; hi.style.margin = "0";
-        const hs = document.createElement("strong"); hs.textContent = `结果过多（${n} 项），请缩小范围`;
+        const hs = document.createElement("strong");
+        hs.textContent = n > 40 ? `结果过多（${n} 项），请缩小范围` : "关键词过宽，请缩小范围";
         const hp = document.createElement("p"); hp.className = "muted"; hp.style.margin = "0";
-        hp.textContent = "补充关键词或改用字段名可收敛结果；内容检索仍在后台继续，加载完成前命中数可能还会增加。";
+        hp.textContent = "补充关键词，或改用字段名（如 region）收敛结果；内容检索仍在后台继续，命中数可能还会增加。";
         hi.appendChild(hs); hi.appendChild(hp);
         hint.appendChild(hi);
         resultsEl.insertBefore(hint, resultsEl.firstChild);
