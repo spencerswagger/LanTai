@@ -353,6 +353,23 @@
           : `/${manifest.slug}/latest.json`;
         var absUrl = location.origin + rawUrl;
 
+        var sizeEl = LT.el("span", { class: "muted mono", text: "快照大小 计算中…" });
+        /* 字节数只能从响应头拿：清单/指针里没有该字段，HEAD 又拿不到 content-length。 */
+        (function fillSnapshotSize() {
+          fetch(absUrl, { method: "GET" })
+            .then((res) => {
+              var len = res.headers.get("content-length");
+              if (res.body && res.body.cancel) {
+                try { res.body.cancel(); } catch (e) {}
+              }
+              var n = len ? Number(len) : NaN;
+              sizeEl.textContent = Number.isFinite(n)
+                ? `快照大小 ${typeof LT.fmtNumber === "function" ? LT.fmtNumber(n) : n.toLocaleString("zh-CN")} 字节`
+                : "快照大小 —";
+            })
+            .catch(() => { sizeEl.textContent = "快照大小 —"; });
+        })();
+
         var card = LT.el("div", { class: "card" });
         card.appendChild(
           LT.el("div", { class: "card__head" }, [
@@ -369,6 +386,7 @@
               }),
               LT.el("span", { class: "muted", text: "内容哈希" }),
               LT.el("code", { class: "mono", text: hash8, title: contentHash || "" }),
+              sizeEl,
               LT.el("a", {
                 class: "btn btn--sm btn--primary",
                 href: rawUrl,
@@ -385,7 +403,7 @@
             LT.el("p", {
               class: "hint",
               style: "margin:0",
-              text: "自行核对步骤：按上面的地址下载快照，本地重算内容哈希，其前 8 位与页面显示一致，即说明这一版内容未被改动。",
+              text: "如何自行核对：按上面的地址下载快照，本地重算内容哈希，其前 8 位与页面显示一致、字节数与上面一致，即说明这一版内容未被改动。",
             }),
           ]),
         );
