@@ -300,7 +300,7 @@
         card.appendChild(
           LT.el("p", {
             class: "muted",
-            text: "以下是该数据集的公开读取地址，由 CDN 直读、零计算，可直接在程序或命令行取用。",
+            text: "以下是该数据集的公开读取地址，由同源 Worker 从对象存储直出（读取零 D1 查询），可直接在程序或命令行取用。",
           }),
         );
         card.appendChild(

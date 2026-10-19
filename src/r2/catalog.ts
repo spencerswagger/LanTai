@@ -1,11 +1,17 @@
 import { PLATFORM_INDEX_KEY } from "./keys";
 import { putReplaceable, readJson } from "./store";
 
+/**
+ * 目录索引条目（R3/R7）：键集白名单 —— 不得出现任何 payload 值（R6）。
+ * `hasData` 表示该数据集是否已发布过数据；为 false 时 `currentDataVersion` 必为 null，
+ * 首页据此显式渲染「尚无数据」（注册 ≠ 数据）。
+ */
 export interface CatalogEntry {
   slug: string;
   title: string;
   currentSchemaVersion: string | null;
-  currentDataVersion?: string | null;
+  currentDataVersion: string | null;
+  hasData: boolean;
   updatedAt: string;
 }
 

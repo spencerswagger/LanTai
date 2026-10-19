@@ -57,6 +57,19 @@ export async function listDataVersions(env: Env, datasetId: string): Promise<Dat
   return result.results ?? [];
 }
 
+/** 只取正式发布版本（`status='published'`）：manifest 的 `dataVersions[]` 只用这一组（R8）。 */
+export async function listPublishedDataVersions(
+  env: Env,
+  datasetId: string,
+): Promise<DataVersionRow[]> {
+  const result = await env.DB.prepare(
+    "SELECT * FROM data_version WHERE dataset_id = ? AND status = 'published' ORDER BY published_at ASC",
+  )
+    .bind(datasetId)
+    .all<DataVersionRow>();
+  return result.results ?? [];
+}
+
 export async function getDataVersion(
   env: Env,
   datasetId: string,

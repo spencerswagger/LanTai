@@ -42,8 +42,8 @@
       "use strict";
       LT.mountShell({ active: "search" });
 
-      /* 全部 termCount 之和不超过它时，后台预取全部单集索引，让内容搜索即时。 */
-      const CONTENT_PREFETCH_BUDGET = 5000;
+      /* 数据集条目数不超过它时，后台预取全部单集索引，让内容搜索即时。 */
+      const CONTENT_PREFETCH_DOCS = 6;
       /* 单集索引的并发上限。 */
       const MAX_CONCURRENT = 4;
 
@@ -79,9 +79,8 @@
 
       const contentLoaded = (slug) => contentCache[slug] !== undefined;
 
-      const hasPending = (q) =>
-        !!q &&
-        docs.some((d) => (d.termCount || 0) > 0 && !contentLoaded(d.slug));
+      /* 全局搜索索引只收录已发布过数据的数据集（R7），因此每个条目都可能有内容索引可拉。 */
+      const hasPending = (q) => !!q && docs.some((d) => !contentLoaded(d.slug));
 
       function enqueue(slug) {
         if (contentLoaded(slug) || contentLoading[slug]) return;
@@ -111,10 +110,10 @@
             });
         }
       }
-      /* 有内容可搜（termCount>0）的数据集视为「相关数据集」，按需入队。 */
+      /* 命中关键词时把条目对应的单集内容索引按需入队（并发受限、失败即视为无内容命中）。 */
       const requestForSearch = (q) => {
         if (!q) return;
-        docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueue(d.slug); });
+        docs.forEach((d) => { enqueue(d.slug); });
       };
 
       const scheduleRender = LT.debounce(() => { if (docs.length) render(); }, 80);
@@ -166,10 +165,12 @@
         LT.clear(results);
 
         if (docs.length === 0) {
+          /* R5：空库显示「命中 0 / 0 个数据集」+「没有匹配的数据集。」，与故障态「搜索索引暂不可用」互斥。 */
+          countEl.textContent = "命中 0 / 0 个数据集";
           results.appendChild(
             LT.emptyState(
-              "还没有可搜索的数据集",
-              "数据目录为空。管理员发布数据集后，其字段与数据内容会进入搜索索引。",
+              "没有匹配的数据集",
+              "没有匹配的数据集。索引里还没有已发布数据的数据集；管理员发布后，其字段与数据内容会进入搜索索引。",
               LT.el("a", { class: "btn btn--sm", href: "/", text: "返回数据目录" }),
             ),
           );
@@ -188,7 +189,7 @@
           results.appendChild(
             LT.emptyState(
               "没有匹配的数据集",
-              `没有 slug、标题、字段或数据内容包含「${raw}」的数据集。可搜范围：${searchableScope()}。`,
+              `没有匹配的数据集。可搜范围：${searchableScope()}；换个关键词试试。`,
               LT.el("button", {
                 class: "btn btn--sm",
                 type: "button",
@@ -204,7 +205,7 @@
           return;
         }
 
-        if (q && (matched.length > 40 || (q.length < 3 && docs.some((d) => (d.termCount || 0) > 5000)))) {
+        if (q && matched.length > 40) {
           const hint = LT.el("div", { class: "callout callout--info" }, [
             LT.el("div", { class: "stack", style: "margin:0" }, [
               LT.el("strong", {
@@ -261,9 +262,8 @@
           .then((index) => {
             docs = index?.datasets || [];
             render();
-            const totalTerms = docs.reduce((n, d) => n + (d.termCount || 0), 0);
-            if (totalTerms <= CONTENT_PREFETCH_BUDGET) {
-              docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueue(d.slug); });
+            if (docs.length <= CONTENT_PREFETCH_DOCS) {
+              docs.forEach((d) => { enqueue(d.slug); });
             }
           })
           .catch(renderError);

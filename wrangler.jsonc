@@ -13,7 +13,30 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    "run_worker_first": true
+    // 静态资产恢复边缘直出：只有下列路径强制**先过 Worker**（闭集白名单，不是通配拦截）。
+    // - /api/*：全部接口；
+    // - 受保护后台页必须留在白名单，否则 assets 的 html_handling 会把 /admin
+    //   直接映射成 public/admin.html 吐给匿名访客，绕过 accessGuard；
+    // - 8 条公开读取族路径显式列入：读取出口与 `.json` 守卫因此对 `.json` 请求具备权威性
+    //   （契约 §1.1 的维护约束——将来往 public/ 加 .json 资产必须先给守卫加白名单——依赖这点）。
+    //   **严禁**改成 `/*.json` 之类的通配：那会把将来加入 public/ 的真实 .json 资产一并吞掉。
+    "run_worker_first": [
+      "/api/*",
+      "/admin",
+      "/admin.html",
+      "/review",
+      "/review.html",
+      "/ops",
+      "/ops.html",
+      "/index.json",
+      "/search/index.json",
+      "/*/manifest.json",
+      "/*/latest.json",
+      "/*/preview.json",
+      "/*/search-index.json",
+      "/*/versions/*.json",
+      "/schemas/*/*.json"
+    ]
   },
   "d1_databases": [
     {
@@ -32,7 +55,6 @@
   ],
   "vars": {
     "ENVIRONMENT": "development",
-    "ALLOW_DEV_STATIC": "true",
     "SKIP_ACCESS_DEV": "true",
     "TURNSTILE_SITE_KEY": "",
     "IP_HASH_SALT": "dev-salt"
@@ -42,7 +64,6 @@
       "name": "lantai-test",
       "vars": {
         "ENVIRONMENT": "test",
-        "ALLOW_DEV_STATIC": "true",
         "SKIP_ACCESS_DEV": "true",
         "TURNSTILE_SITE_KEY": "",
         "IP_HASH_SALT": "dev-salt"
@@ -67,7 +88,6 @@
       "name": "lantai-preprod",
       "vars": {
         "ENVIRONMENT": "preprod",
-        "ALLOW_DEV_STATIC": "false",
         "SKIP_ACCESS_DEV": "false"
       },
       "d1_databases": [
@@ -90,7 +110,6 @@
       "name": "lantai",
       "vars": {
         "ENVIRONMENT": "production",
-        "ALLOW_DEV_STATIC": "false",
         "SKIP_ACCESS_DEV": "false"
       },
       "d1_databases": [

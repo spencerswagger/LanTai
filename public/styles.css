@@ -1750,6 +1750,24 @@ dialog.lt-dialog::backdrop {
   white-space: nowrap;
   flex: none;
 }
+/* R3：已发布行的固定版本快照入口（可点击）。 */
+.opt__row .tail--link {
+  margin-left: 10px;
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(34, 211, 238, 0.45);
+}
+.opt__row .tail--link:hover {
+  border-bottom-style: solid;
+}
+/* R3：仅冻结未发布数据的数据集行，与已发布行视觉可区分。 */
+.opt--empty {
+  opacity: 0.72;
+}
+.opt--empty .why--empty {
+  color: var(--ink-3);
+  border-color: var(--rule-strong);
+}
 .hl {
   color: var(--primary);
   font-weight: 750;

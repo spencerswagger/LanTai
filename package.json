@@ -11,6 +11,7 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:preprod": "wrangler d1 migrations apply DB --env preprod --remote",
     "db:migrate:prod": "wrangler d1 migrations apply DB --env production --remote",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",

@@ -23,13 +23,13 @@ interface SearchDoc {
   terms: string[];
 }
 
+/** R4 键集白名单：全局条目只有这五个键——多键即失败（尤其不得内联 terms）。 */
 interface GlobalSearchDoc {
   slug: string;
   title: string;
   schemaVersion: string | null;
   dataVersion: string | null;
   fields: SearchField[];
-  termCount: number;
 }
 
 interface GlobalSearchIndex {
@@ -59,8 +59,14 @@ describe("search index", () => {
     expect(doc?.dataVersion).toBe("1");
     expect(doc?.fields.map((f) => f.name)).toEqual(["name", "age"]);
     expect(doc?.fields[0]).toEqual({ name: "name", title: "名称", type: "string" });
-    // 全局条目为精简形状：含 termCount，不内联 terms。
-    expect(doc?.termCount).toBe(1);
+    // 全局条目为严格精简形状：只有 R4 白名单的五个键（既不内联 terms，也没有任何额外键）。
+    expect(Object.keys(doc as object).sort()).toEqual([
+      "dataVersion",
+      "fields",
+      "schemaVersion",
+      "slug",
+      "title",
+    ]);
     expect(doc && "terms" in doc).toBe(false);
 
     const perRes = await callApp("/search-a/search-index.json");
@@ -68,9 +74,30 @@ describe("search index", () => {
     const perDoc = await json<SearchDoc>(perRes);
     expect(perDoc.slug).toBe("search-a");
     expect(perDoc.fields.length).toBe(2);
-    // 完整 terms 落在 per-dataset 索引，且与全局 termCount 一致。
+    // 完整 terms 只落在 per-dataset 索引（全局索引不内联，避免体积与泄露）。
     expect(perDoc.terms).toContain("alice");
-    expect(perDoc.terms.length).toBe(doc?.termCount);
+    expect(perDoc.terms.length).toBe(1);
+  });
+
+  it("R7：仅冻结、从未发布过数据的数据集不进全局索引，也没有 per-dataset 索引", async () => {
+    const frozenOnly = await postJson("/api/admin/datasets", {
+      slug: "search-frozen-only",
+      title: "search-frozen-only",
+      schema,
+    });
+    const { dataset } = await json<{ dataset: { id: string } }>(frozenOnly);
+    await postJson(`/api/admin/datasets/${dataset.id}/freeze`, { version: "1.0.0" });
+
+    const published = await setup("search-published-only");
+    await postJson(`/api/admin/datasets/${published}/publish`, { payload: { name: "carol" } });
+
+    const global = await json<GlobalSearchIndex>(await callApp("/search/index.json"));
+    const slugs = global.datasets.map((d) => d.slug);
+    expect(slugs).toContain("search-published-only");
+    expect(slugs).not.toContain("search-frozen-only");
+
+    const frozenIndex = await callApp("/search-frozen-only/search-index.json");
+    expect(frozenIndex.status).toBe(404);
   });
 
   it("indexes published data values (strings and numbers) for full-text search", async () => {
@@ -92,7 +119,7 @@ describe("search index", () => {
     expect(doc.terms.every((t) => typeof t === "string")).toBe(true);
   });
 
-  it("covers all string names in termCount even with a large payload", async () => {
+  it("covers all string names in per-dataset terms even with a large payload", async () => {
     const id = await setup("search-large");
     const rows = Array.from({ length: 5000 }, (_, i) => ({ name: `名称${i}` }));
     await postJson(`/api/admin/datasets/${id}/publish`, {
@@ -108,11 +135,18 @@ describe("search index", () => {
     expect(perDoc.terms).toContain("7");
     expect(perDoc.terms.length).toBe(5002);
 
-    // 全局索引的 termCount 覆盖全部字符串（不再被数字挤掉），且不含 terms。
+    // 全局索引只留元数据：既不含 terms，也不含任何额外计数键。
     const global = await json<GlobalSearchIndex>(await callApp("/search/index.json"));
     const doc = global.datasets.find((d) => d.slug === "search-large");
-    expect(doc?.termCount).toBe(5002);
+    expect(doc).toBeDefined();
     expect(doc && "terms" in doc).toBe(false);
+    expect(Object.keys(doc as object).sort()).toEqual([
+      "dataVersion",
+      "fields",
+      "schemaVersion",
+      "slug",
+      "title",
+    ]);
   });
 });
 

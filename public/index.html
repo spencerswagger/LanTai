@@ -65,8 +65,8 @@
 
     LT.mountShell({ active: "catalog" });
 
-    /* 单集内容索引预取预算：全部 termCount 之和不超过它时，后台预取全部单集索引，让内容搜索即时。 */
-    const CONTENT_PREFETCH_BUDGET = 5000;
+    /* 单集内容索引预取：数据集条目数不超过它时，后台预取全部单集索引，让内容搜索即时。 */
+    const CONTENT_PREFETCH_DOCS = 6;
     /* 单集索引的并发上限。 */
     const MAX_CONCURRENT = 4;
     /* 预览表格每批渲染的行数。 */
@@ -80,8 +80,11 @@
       { label: "读者指南", desc: "读者 / 贡献者 / 运营者指南", kw: "说明 帮助 文档 指南 读者", href: "/docs/reader.html" }
     ];
 
-    /* 来自 /search/index.json 的精简全局索引：{ slug,title,schemaVersion,dataVersion,fields,termCount }，不含 terms。 */
+    /* 目录索引（/index.json，权威）：{ slug,title,currentSchemaVersion,currentDataVersion,hasData,updatedAt }。
+       它收录「已冻结 Schema」的全部数据集，含仅冻结未发布者（hasData:false，行内显「尚无数据」）。
+       搜索索引（/search/index.json）只收录已发布过数据者，作为**可选增强**提供字段元数据。 */
     let docs = [];
+    const fieldIndex = Object.create(null);
     const resultsEl = document.getElementById("results");
     const input = document.getElementById("q");
     const scopeEl = document.getElementById("scope");
@@ -149,12 +152,12 @@
     }
     function hasPendingContent(term) {
       if (!term) return false;
-      return docs.some((d) => (d.termCount || 0) > 0 && !contentLoaded(d.slug));
+      return docs.some((d) => d.hasData && !contentLoaded(d.slug));
     }
-    /* 有内容可搜（termCount>0）的数据集视为「相关数据集」，按需入队。 */
+    /* 已发布过数据（hasData）的数据集视为「相关数据集」，按需入队。 */
     function requestContentForSearch(term) {
       if (!term) return;
-      docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueueContent(d.slug); });
+      docs.forEach((d) => { if (d.hasData) enqueueContent(d.slug); });
     }
     function contentMatch(d, term) {
       const c = contentCache[d.slug];
@@ -368,13 +371,26 @@
 
       if (!groups.length) {
         const none = document.createElement("div"); none.className = "nohit";
-        none.textContent = term
-          ? (hasPendingContent(term)
+        if (term) {
+          none.textContent = hasPendingContent(term)
             ? "正在检索数据内容…"
-            : "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。")
-          : "数据目录为空。管理员发布数据集后会显示在这里。";
+            : "没有匹配结果。换个关键词试试，或点上方「试试」里的示例。";
+        } else {
+          /* R1：空库恒显示「暂无已发布数据集」；故障态见 renderCatalogError（「目录索引暂不可用」），
+             两组文案互斥——故障绝不呈现成空目录。 */
+          none.textContent = "暂无已发布数据集";
+          const sub = document.createElement("p");
+          sub.className = "muted";
+          sub.style.margin = "8px 0 0";
+          sub.textContent = "管理员冻结并发布数据集后，会显示在这里。";
+          none.appendChild(sub);
+        }
         resultsEl.appendChild(none);
-        scopeEl.textContent = "0 个结果 · 搜索范围：数据集名称、字段与数据内容";
+        /* 空库（无关键词、无条目）与「搜不到」是两种状态：前者必须显「暂无已发布数据集」。
+           这里写死 scope，保证任何一次 render 重跑都不会把它覆盖成「0 个结果」。 */
+        scopeEl.textContent = !term && docs.length === 0
+          ? "目录已加载，但暂无已发布数据集 · 搜索范围：数据集名称、字段与数据内容"
+          : "0 个结果 · 搜索范围：数据集名称、字段与数据内容";
         input.removeAttribute("aria-activedescendant");
         selKey = "";
         updateCstatus();
@@ -399,7 +415,15 @@
           if (g.kind === "ds") {
             icon = "DS"; title = it.d.title || it.d.slug;
             if (it.why) badge = `<span class="why">${esc(it.why)}命中</span>`;
-            dsc = `${it.d.slug} · ${(it.d.fields || []).length} 个字段 · ${it.d.dataVersion ? `v${it.d.dataVersion}` : "未发布数据"}`;
+            const fieldCount = (it.d.fields || []).length;
+            if (it.d.hasData) {
+              dsc = `${it.d.slug} · ${fieldCount} 个字段 · 最新快照 v${it.d.dataVersion}`;
+            } else {
+              /* R3：未发布行显式呈现「尚无数据」，且样式与已发布行可区分（行加 opt--empty）。 */
+              row.classList.add("opt--empty");
+              badge = `<span class="why why--empty">尚无数据</span>${badge}`;
+              dsc = `${it.d.slug} · ${fieldCount} 个字段 · 尚无数据（仅冻结 Schema，未发布数据）`;
+            }
             tail = `Schema ${it.d.schemaVersion || "—"}`;
           } else if (g.kind === "field") {
             icon = "≡"; title = it.f.title || it.f.name;
@@ -417,6 +441,18 @@
             '<span class="d">' + mark(dsc, term) + "</span></span>" +
             '<span class="tail">' + esc(tail) + "</span>";
           row.appendChild(hrow);
+
+          /* R3：已发布行给出可点击的快照入口（固定版本快照地址，immutable）。 */
+          if (g.kind === "ds" && it.d.hasData && it.d.dataVersion) {
+            const snap = document.createElement("a");
+            snap.className = "tail tail--link";
+            snap.href = `/${encodeURIComponent(it.d.slug)}/versions/${encodeURIComponent(it.d.dataVersion)}.json`;
+            snap.textContent = `快照 v${it.d.dataVersion} →`;
+            snap.addEventListener("click", (e) => {
+              e.stopPropagation();
+            });
+            hrow.appendChild(snap);
+          }
 
           if (g.kind !== "act") {
             const body = document.createElement("div");
@@ -436,15 +472,14 @@
       scopeEl.textContent = (term ? `命中 ${n} 项` : `共 ${docs.length} 个数据集`) +
         " · 搜索范围：数据集名称、字段与数据内容";
 
-      /* M2：宽泛关键词（或命中过多）时给出明确提示，避免「页面卡住」的错觉。 */
-      const heavyIndex = docs.some((d) => (d.termCount || 0) > 5000);
-      const tooBroad = !!term && (n > 40 || (term.length < 3 && heavyIndex));
+      /* M2：命中过多时给出明确提示，避免「页面卡住」的错觉。 */
+      const tooBroad = !!term && n > 40;
       if (tooBroad) {
         const hint = document.createElement("div");
         hint.className = "callout callout--info";
         const hi = document.createElement("div"); hi.className = "stack"; hi.style.margin = "0";
         const hs = document.createElement("strong");
-        hs.textContent = n > 40 ? `结果过多（${n} 项），请缩小范围` : "关键词过宽，请缩小范围";
+        hs.textContent = `结果过多（${n} 项），请缩小范围`;
         const hp = document.createElement("p"); hp.className = "muted"; hp.style.margin = "0";
         hp.textContent = "补充关键词，或改用字段名（如 region）收敛结果；内容检索仍在后台继续，命中数可能还会增加。";
         hi.appendChild(hs); hi.appendChild(hp);
@@ -545,7 +580,7 @@
       });
     }
 
-    /* ---------- 载入索引（M1：加载态 / 失败态 / 重试，失败绝不呈现为「空目录」） ---------- */
+    /* ---------- 载入目录（M1：加载态 / 失败态 / 重试；R1/R2：空 ≠ 坏，故障绝不呈现为「空目录」） ---------- */
     function renderCatalogSkeleton() {
       resultsEl.textContent = "";
       const wrap = document.createElement("div"); wrap.className = "cards";
@@ -557,6 +592,7 @@
       resultsEl.appendChild(wrap);
     }
 
+    /* R2：只有「目录索引拿不到」才算坏。文案与 R1 的空态互斥。 */
     function renderCatalogError(reason) {
       resultsEl.textContent = "";
       const box = document.createElement("div");
@@ -564,51 +600,80 @@
       box.setAttribute("role", "alert");
       const inner = document.createElement("div");
       inner.className = "stack"; inner.style.margin = "0";
-      const title = document.createElement("strong"); title.textContent = "目录加载失败";
+      const title = document.createElement("strong"); title.textContent = "目录索引暂不可用";
       const msg = document.createElement("p"); msg.className = "muted"; msg.style.margin = "0";
-      msg.textContent = reason + " 目录读取失败并不代表平台暂无数据，请重试。";
+      msg.textContent = `${reason} 索引读取失败并不代表平台没有数据，请重试。`;
       const retry = document.createElement("button");
       retry.type = "button"; retry.className = "btn btn--sm"; retry.textContent = "重试";
-      retry.addEventListener("click", () => loadIndex());
+      retry.addEventListener("click", () => loadCatalog());
       const row = document.createElement("div"); row.className = "cluster"; row.appendChild(retry);
       inner.appendChild(title); inner.appendChild(msg); inner.appendChild(row);
       box.appendChild(inner);
       resultsEl.appendChild(box);
     }
 
-    function loadIndex() {
+    /* 目录条目 → 渲染用条目：hasData 由目录给出（兼容旧对象：无该键时以 currentDataVersion 推断）。 */
+    function toDoc(entry) {
+      const dataVersion = entry.currentDataVersion == null ? null : String(entry.currentDataVersion);
+      return {
+        slug: entry.slug,
+        title: entry.title || entry.slug,
+        schemaVersion: entry.currentSchemaVersion == null ? null : String(entry.currentSchemaVersion),
+        dataVersion: dataVersion,
+        hasData: typeof entry.hasData === "boolean" ? entry.hasData : dataVersion != null,
+        fields: fieldIndex[entry.slug] || []
+      };
+    }
+
+    /* 搜索索引（/search/index.json）是可选增强：只补字段元数据，失败不影响目录呈现。 */
+    function loadSearchMeta(signal) {
+      return fetch("/search/index.json", { headers: { accept: "application/json" }, signal: signal })
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then((index) => {
+          ((index && index.datasets) || []).forEach((d) => {
+            if (d && d.slug) fieldIndex[d.slug] = (d.fields || []);
+          });
+          /* 只补字段元数据——不能重跑 toDoc（那是「目录条目 → 渲染条目」的转换）。 */
+          docs.forEach((d) => { d.fields = fieldIndex[d.slug] || []; });
+          buildChips();
+        })
+        .catch(() => { /* 字段元数据拿不到：目录照常呈现，只是字段检索不可用。 */ });
+    }
+
+    function loadCatalog() {
       scopeEl.textContent = "正在加载数据目录…";
       cstatusEl.textContent = "";
       renderCatalogSkeleton();
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 10000);
-      fetch("/search/index.json", { headers: { accept: "application/json" }, signal: ctl.signal })
+      /* 读取出口对 /index.json 恒 200（对象缺失时合成空索引），因此非 200 一律是「坏了」（R1/R2）。 */
+      fetch("/index.json", { headers: { accept: "application/json" }, signal: ctl.signal })
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then((index) => {
-          docs = (index?.datasets) || [];
+          docs = ((index && index.datasets) || []).map(toDoc);
           buildChips();
           render();
           input.focus();
-          if (!docs.length) {
-            scopeEl.textContent = "目录已加载，但平台尚无已发布数据集 · 搜索范围：数据集名称、字段与数据内容";
+          if (docs.length <= CONTENT_PREFETCH_DOCS) {
+            docs.forEach((d) => { if (d.hasData) enqueueContent(d.slug); });
           }
-          const totalTerms = docs.reduce((n, d) => n + (d.termCount || 0), 0);
-          if (totalTerms <= CONTENT_PREFETCH_BUDGET) {
-            docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueueContent(d.slug); });
-          }
+          return loadSearchMeta(ctl.signal).then(() => {
+            render();
+            buildChips();
+          });
         })
         .catch((err) => {
           renderCatalogError(
             err && err.name === "AbortError"
               ? "读取数据目录超时（10 秒）。"
-              : `无法读取数据目录（${(err && err.message) || "网络错误"}）。`,
+              : `无法读取 /index.json（${(err && err.message) || "网络错误"}）。`,
           );
-          scopeEl.textContent = "目录加载失败 · 可点击重试";
+          scopeEl.textContent = "目录索引暂不可用 · 可点击重试";
         })
         .finally(() => clearTimeout(timer));
     }
 
-    loadIndex();
+    loadCatalog();
   })();
 </script>
 </body>

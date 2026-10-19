@@ -6,7 +6,7 @@ import { nowIso } from "../lib/ids";
 import { upsertCatalogEntry } from "../r2/catalog";
 import { buildManifest, type ManifestDataVersion, writeManifest } from "../r2/manifest";
 import { type LatestPointer, writeLatestPointer } from "./pointer";
-import { getDataVersion, listDataVersions } from "./repository";
+import { getDataVersion, listPublishedDataVersions } from "./repository";
 
 export interface RollbackResult {
   rolledBackTo: string;
@@ -60,7 +60,7 @@ export async function rollbackDataset(
   ]);
 
   const preview = dataset.current_preview_version ?? null;
-  const versions = await listDataVersions(env, datasetId);
+  const versions = await listPublishedDataVersions(env, datasetId);
   const dataVersions: ManifestDataVersion[] = versions.map((row) => ({
     version: row.version,
     publishedAt: row.published_at,
@@ -82,6 +82,7 @@ export async function rollbackDataset(
     title: dataset.title,
     currentSchemaVersion: schemaVersion,
     currentDataVersion: targetVersion,
+    hasData: true,
     updatedAt: rolledAt,
   });
 

@@ -16,7 +16,7 @@
         <p class="eyebrow">LanTai 文档 · 运营者</p>
         <h1>运营与纪律</h1>
         <p class="lede">
-          平台以 Cloudflare 免费额度运营：读取零计算，成本集中在写入与审阅。
+          平台以 Cloudflare 免费额度运营：公开读取由同源 Worker 从对象存储直出（读取零 D1 查询），成本集中在写入与审阅。
           运营者需遵守保留策略与配额纪律，并知悉预发地址的“非正式”属性。
         </p>
       </header>
@@ -44,7 +44,7 @@
             <li>每日请求阈值由 <code>QUOTA_ALERT_THRESHOLD</code> 设定（默认 80000）。</li>
             <li>使用率 ≥ 80% 记 warn，≥ 100% 记 critical，并写审计 <code>ops.quota.alert</code>。</li>
             <li>配置 <code>ADMIN_FALLBACK_EMAIL</code> 时同步发信；未配置发信时仅写审计。</li>
-            <li>读取路径绕开 Worker 与配额，优先以静态消费降低计算消耗。</li>
+            <li>公开读取路径不查 D1、不做 payload 计算，只做对象直出；每次读取消耗 1 次 Worker 请求（免费额度 10 万/日）。</li>
           </ul>
           <p class="muted">运营动作在控制台<a href="/ops">运营</a>页执行，清理与危险操作均需二次确认。</p>
         </div>

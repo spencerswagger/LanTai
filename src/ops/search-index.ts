@@ -21,10 +21,11 @@ export interface SearchDoc {
 }
 
 /**
- * 全局索引中的数据集条目：不再内联完整 terms（体积过大），仅保留元数据与 termCount。
- * termCount 为该数据集 per-dataset 索引中 terms 的总数，供前端展示规模。
+ * 全局索引中的数据集条目（R4 键集白名单，严格断言，多键即失败）：
+ * `{ slug, title, schemaVersion, dataVersion, fields }`。
+ * **禁止额外键**——尤其不得内联 `terms` / `values` / `rows` / `sample` 等 payload 派生值（R6）。
  */
-export type GlobalSearchDoc = Omit<SearchDoc, "terms"> & { termCount: number };
+export type GlobalSearchDoc = Omit<SearchDoc, "terms">;
 
 export interface GlobalSearchIndex {
   generatedAt: string;
@@ -185,16 +186,32 @@ export async function writeDatasetSearchIndex(env: Env, datasetId: string): Prom
   return doc;
 }
 
+/** 精简全局条目：显式逐键构造，保证键集白名单（多键即 R4 失败）。 */
+function toGlobalDoc(doc: SearchDoc): GlobalSearchDoc {
+  return {
+    slug: doc.slug,
+    title: doc.title,
+    schemaVersion: doc.schemaVersion,
+    dataVersion: doc.dataVersion,
+    fields: doc.fields,
+  };
+}
+
 /**
- * 重建全局搜索索引：遍历全部数据集刷新各自完整 per-dataset 索引，
- * 再把全局索引 `search/index.json` 写为精简形状（每个条目仅含元数据 + termCount，不内联 terms）。
+ * 重建全局搜索索引：遍历**已发布过数据**的数据集刷新各自完整 per-dataset 索引，
+ * 再把全局索引 `search/index.json` 写为精简形状（每个条目仅含元数据，不内联 terms）。
+ *
+ * R7（产品口径）：搜索索引的语义是「去哪找数据」，因此只收录 `current_data_version != null`
+ * 的数据集；仅冻结、从未发布过数据的数据集既不在全局索引、也不写 `/{slug}/search-index.json`
+ * （该路径保持 404），但**会**出现在 `/index.json` 目录里并标 `hasData:false`。
  */
 export async function rebuildGlobalSearchIndex(env: Env): Promise<{ count: number }> {
   const datasets = await listDatasets(env);
   const docs: GlobalSearchDoc[] = [];
   for (const dataset of datasets) {
-    const { terms, ...meta } = await writeDatasetSearchIndex(env, dataset.id);
-    docs.push({ ...meta, termCount: terms.length });
+    if (dataset.current_data_version === null) continue;
+    const doc = await writeDatasetSearchIndex(env, dataset.id);
+    docs.push(toGlobalDoc(doc));
   }
   const index: GlobalSearchIndex = { generatedAt: nowIso(), datasets: docs };
   await putReplaceable(env.BUCKET, SEARCH_INDEX_KEY, index);

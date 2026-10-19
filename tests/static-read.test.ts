@@ -13,7 +13,11 @@ async function setup(slug: string): Promise<void> {
   await postJson(`/api/admin/datasets/${dataset.id}/freeze`, { version: "1.0.0" });
 }
 
-describe("static read endpoints (dev passthrough)", () => {
+/**
+ * 读取出口的常态语义（ALLOW_DEV_STATIC 已退役，dev / preprod / prod 同一套读取出口）。
+ * 更细的缓存头 / 404 / 响应头白名单断言见 tests/read-egress.test.ts。
+ */
+describe("static read endpoints (public read egress)", () => {
   it("serves the frozen schema, catalog index and manifest", async () => {
     await setup("read-a");
 

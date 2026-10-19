@@ -8,6 +8,7 @@ import type { Env } from "../env";
 import { auditStatement } from "../lib/audit";
 import { ConflictError } from "../lib/errors";
 import { nowIso } from "../lib/ids";
+import { listPublishedDataVersions } from "../publish/repository";
 import { type CatalogIndex, upsertCatalogEntry } from "../r2/catalog";
 import { schemaKey } from "../r2/keys";
 import { buildManifest, type Manifest, writeManifest } from "../r2/manifest";
@@ -81,20 +82,37 @@ export async function freezeSchemaVersion(
 
   await putImmutable(env.BUCKET, schemaKey(dataset.slug, version), schemaDoc);
 
+  const currentDataVersion = dataset.current_data_version ?? null;
   const catalog = await upsertCatalogEntry(env.BUCKET, {
     slug: dataset.slug,
     title: dataset.title,
     currentSchemaVersion: version,
-    currentDataVersion: dataset.current_data_version ?? null,
+    currentDataVersion,
+    /* 注册 ≠ 数据：冻结即入目录（R7），未发布过数据时标 hasData:false（R3）。 */
+    hasData: currentDataVersion !== null,
     updatedAt: frozenAt,
   });
 
+  /*
+   * R8：freeze 成功即写 manifest（首次冻结 → dataVersions:[]、latest:null、preview:null）。
+   * 对已发布过的数据集再冻结时，manifest 必须保留既有已发布版本列表——
+   * 否则会出现 latest 不在 dataVersions[] 里的非法清单（R8 不变式：latest ∈ {null} ∪ dataVersions[].version）。
+   * preview 快照不进 dataVersions[]（上层已定：preview 不进，isPreview v1 恒 false）。
+   */
+  const previewVersion = dataset.current_preview_version ?? null;
+  const publishedVersions = await listPublishedDataVersions(env, datasetId);
   const manifest = buildManifest({
     slug: dataset.slug,
     title: dataset.title,
     schemaVersion: version,
-    latest: dataset.current_data_version ?? null,
-    preview: dataset.current_preview_version ?? null,
+    dataVersions: publishedVersions.map((row) => ({
+      version: row.version,
+      publishedAt: row.published_at,
+      isLatest: row.version === currentDataVersion,
+      isPreview: false,
+    })),
+    latest: currentDataVersion,
+    preview: previewVersion,
   });
   await writeManifest(env.BUCKET, manifest);
 

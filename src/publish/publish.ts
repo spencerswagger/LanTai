@@ -21,7 +21,7 @@ import {
 import {
   type DataVersionRow,
   insertDataVersion,
-  listDataVersions,
+  listPublishedDataVersions,
   nextDataVersionNumber,
 } from "./repository";
 
@@ -127,7 +127,7 @@ export async function publishDataset(
     dataset.current_preview_version ??
     (await readPreviewPointer(env.BUCKET, dataset.slug))?.dataVersion ??
     null;
-  const versions = await listDataVersions(env, datasetId);
+  const versions = await listPublishedDataVersions(env, datasetId);
   const manifest = buildManifest({
     slug: dataset.slug,
     title: dataset.title,
@@ -143,6 +143,7 @@ export async function publishDataset(
     title: dataset.title,
     currentSchemaVersion: schemaVersion,
     currentDataVersion: version,
+    hasData: true,
     updatedAt: publishedAt,
   });
 

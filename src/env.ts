@@ -9,7 +9,6 @@ export interface Env {
   ASSETS: Fetcher;
   ENVIRONMENT: string;
   SKIP_ACCESS_DEV?: string;
-  ALLOW_DEV_STATIC?: string;
   TURNSTILE_SECRET?: string;
   TURNSTILE_SITE_KEY?: string;
   MAIL_ENDPOINT?: string;

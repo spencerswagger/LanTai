@@ -5,7 +5,14 @@ import { AppError } from "./lib/errors";
 import { errorBody } from "./lib/response";
 import { accessGuard } from "./middleware/access";
 import { handleScheduled } from "./ops/cron";
-import { PLATFORM_INDEX_KEY, r2KeyForPublicPath } from "./r2/keys";
+import {
+  cacheControlForKey,
+  isJsonGuardPath,
+  normalizeReadPath,
+  PLATFORM_INDEX_KEY,
+  readEgressKeyForPath,
+  SEARCH_INDEX_KEY,
+} from "./r2/keys";
 import { adminApi } from "./routes/admin";
 import { healthApi } from "./routes/health";
 import { submissionsApi } from "./routes/submissions";
@@ -89,36 +96,121 @@ function escapeXml(text: string): string {
 }
 
 /**
- * 开发态静态读取直通：仅当 ALLOW_DEV_STATIC=true 时启用，把平台数据路径映射到 R2 对象，
- * 便于本地无自定义域时演示。生产环境读取走 R2 自定义域，不经 Worker。
+ * 公开读取出口（契约 docs/contracts/public-read-egress.md，R1–R15）：
+ * 8 类读取路径由**同源 Worker 从 R2 直出**，排在资产兜底之前。
+ *
+ * 实现纪律（供 Hawk 断言）：
+ *  - 不查 D1、不做 payload 计算、不做鉴权；slug/版本合法性不反查，对象不存在即 404；
+ *  - 仅 GET / HEAD（HEAD 由 Hono 按 GET 处理后剥体）；其余方法 405 `method_not_allowed` + `allow`；
+ *  - `cache-control` 逐字节复制 R2 对象 `httpMetadata`，仅缺失时用 `cacheControlForKey` 兜底；
+ *  - 不引入自持缓存（不用 Cache API / KV 缓存读取响应），否则 R13「发布后立即可见」不成立；
+ *  - v1 不做条件请求（不做 304、忽略 query、不协商 Accept），保证 R9 的字节稳定性；
+ *  - 响应头白名单 = content-type / cache-control / etag，禁止任何 `x-lantai-*`。
  */
-app.get("*", async (c, next) => {
-  if (c.env.ALLOW_DEV_STATIC === "true") {
-    const key = r2KeyForPublicPath(new URL(c.req.url).pathname);
-    if (key) return serveR2Object(c.env.BUCKET, key);
+app.all("*", async (c, next) => {
+  const pathname = new URL(c.req.url).pathname;
+  const key = readEgressKeyForPath(pathname);
+
+  if (key) {
+    const method = c.req.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      return readEgressResponse(
+        errorBody("method_not_allowed", "公开读取出口只支持 GET / HEAD"),
+        405,
+        "no-store",
+        { allow: "GET, HEAD" },
+      );
+    }
+    return serveR2Read(c.env.BUCKET, key, method);
   }
+
+  /* `.json` 守卫（契约 §1.1 第 3 步 / R11）：一切以 `.json` 结尾但不属家族的请求一律
+     JSON 404，**永不**回退成资产层的 200 HTML。归一化已在判定前完成
+     （`/demo/manifest.json/` 归家族；`/nope.json/` 落守卫）。 */
+  if (isJsonGuardPath(pathname)) {
+    return readEgressResponse(
+      errorBody("not_found", `未找到静态对象：${normalizeReadPath(pathname)}`),
+      404,
+      "no-store",
+    );
+  }
+
   return next();
 });
 
 app.all("/api/*", (c) => c.json(errorBody("not_found", "接口不存在"), 404));
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-async function serveR2Object(bucket: R2Bucket, key: string): Promise<Response> {
-  const object = await bucket.get(key);
-  if (!object) {
-    return Response.json(errorBody("not_found", `未找到静态对象：${key}`), { status: 404 });
+/** 读取出口的 content-type 恒定值（契约把该值写死在响应头白名单里）。 */
+const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+
+/** 空目录 / 空搜索索引的合成结果：空 ≠ 坏（R1），永不 404。 */
+const SYNTHETIC_EMPTY_INDEX = { generatedAt: "", datasets: [] };
+
+/** 读取出口的 500 错误码（契约 §1.3）：1/2 用各自的不可用码，其余一律 `read_unavailable`。 */
+function readFailureCode(key: string): string {
+  if (key === PLATFORM_INDEX_KEY) return "index_unavailable";
+  if (key === SEARCH_INDEX_KEY) return "search_index_unavailable";
+  return "read_unavailable";
+}
+
+function readEgressResponse(
+  body: unknown,
+  status: number,
+  cacheControl: string,
+  extraHeaders: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": JSON_CONTENT_TYPE,
+      "cache-control": cacheControl,
+      ...extraHeaders,
+    },
+  });
+}
+
+async function serveR2Read(bucket: R2Bucket, key: string, method: string): Promise<Response> {
+  const isIndex = key === PLATFORM_INDEX_KEY;
+  const isSearchIndex = key === SEARCH_INDEX_KEY;
+  /* HEAD 只取元数据：用 head() 而不是 get()，避免开出一个不会被消费的 R2 体流
+     （悬挂句柄在本地/边缘都是实打实的资源泄漏，Hono 的 HEAD 包装不会替你关闭它）。 */
+  const bodyless = method === "HEAD";
+
+  let object: R2Object | null;
+  try {
+    object = bodyless ? await bucket.head(key) : await bucket.get(key);
+  } catch (error) {
+    /* R2 抛错 = 真的坏了：500 JSON，绝不降级成 404，也不合成空索引（R10）。 */
+    console.error("read_egress_r2_error", key, error);
+    return readEgressResponse(
+      errorBody(readFailureCode(key), "读取静态发布物失败，请稍后重试"),
+      500,
+      "no-store",
+    );
   }
-  const headers = new Headers();
-  headers.set(
-    "content-type",
-    object.httpMetadata?.contentType ?? "application/json; charset=utf-8",
-  );
-  headers.set("cache-control", object.httpMetadata?.cacheControl ?? "public, max-age=60");
-  if (object.httpEtag) headers.set("etag", object.httpEtag);
-  /* 快照字节数：前端首屏「自行核对」行需要它，而压缩后 content-length 会被 CDN 丢弃。 */
-  headers.set("x-lantai-object-bytes", String(object.size));
-  headers.set("x-lantai-served-by", "worker-dev-static");
-  return new Response(object.body, { headers });
+
+  try {
+    if (!object) {
+      if (isIndex || isSearchIndex) {
+        /* 对象缺失 → 200 合成空索引（空 ≠ 坏）。 */
+        return readEgressResponse(SYNTHETIC_EMPTY_INDEX, 200, cacheControlForKey(key));
+      }
+      /* 版本 / 清单 / 指针 / Schema 不存在 → 404 JSON，且 404 一律 no-store（永不含 immutable）。 */
+      return readEgressResponse(errorBody("not_found", `未找到静态对象：${key}`), 404, "no-store");
+    }
+
+    const headers = new Headers();
+    headers.set("content-type", JSON_CONTENT_TYPE);
+    headers.set("cache-control", object.httpMetadata?.cacheControl ?? cacheControlForKey(key));
+    if (object.httpEtag) headers.set("etag", object.httpEtag);
+    if (bodyless) return new Response(null, { headers });
+    return new Response((object as R2ObjectBody).body, { headers });
+  } catch (error) {
+    /* 兜底（契约 §1.3 `internal_error`）：读取出口未捕获异常也必须是 JSON + no-store。 */
+    console.error("read_egress_internal_error", key, error);
+    return readEgressResponse(errorBody("internal_error", "服务内部错误"), 500, "no-store");
+  }
 }
 
 export { app };
