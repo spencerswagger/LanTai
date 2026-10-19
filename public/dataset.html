@@ -358,7 +358,8 @@
         (function fillSnapshotSize() {
           fetch(absUrl, { method: "GET" })
             .then((res) => {
-              var len = res.headers.get("content-length");
+              var len =
+                res.headers.get("x-lantai-object-bytes") || res.headers.get("content-length");
               if (res.body && res.body.cancel) {
                 try { res.body.cancel(); } catch (e) {}
               }

@@ -115,6 +115,8 @@ async function serveR2Object(bucket: R2Bucket, key: string): Promise<Response> {
   );
   headers.set("cache-control", object.httpMetadata?.cacheControl ?? "public, max-age=60");
   if (object.httpEtag) headers.set("etag", object.httpEtag);
+  /* 快照字节数：前端首屏「自行核对」行需要它，而压缩后 content-length 会被 CDN 丢弃。 */
+  headers.set("x-lantai-object-bytes", String(object.size));
   headers.set("x-lantai-served-by", "worker-dev-static");
   return new Response(object.body, { headers });
 }
