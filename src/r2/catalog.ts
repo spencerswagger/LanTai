@@ -33,7 +33,9 @@ export async function upsertCatalogEntry(
   const existing = await readCatalog(bucket);
   const datasets = existing.datasets.filter((d) => d.slug !== entry.slug);
   datasets.push(entry);
-  datasets.sort((a, b) => a.slug.localeCompare(b.slug));
+  /* 固定 slug 升序（契约 §2.1）。用码位序而非 localeCompare：
+     验收 E3 的判据是 `[...].sort()`（默认比较器＝码位序），两者必须逐位一致。 */
+  datasets.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
   const next: CatalogIndex = { generatedAt: new Date().toISOString(), datasets };
   await putReplaceable(bucket, PLATFORM_INDEX_KEY, next);
   return next;

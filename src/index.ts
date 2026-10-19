@@ -8,7 +8,6 @@ import { handleScheduled } from "./ops/cron";
 import {
   cacheControlForKey,
   isJsonGuardPath,
-  normalizeReadPath,
   PLATFORM_INDEX_KEY,
   readEgressKeyForPath,
   SEARCH_INDEX_KEY,
@@ -20,11 +19,16 @@ import { submissionsApi } from "./routes/submissions";
 const app = new Hono<AppEnv>();
 
 app.onError((err, c) => {
+  /* 契约 §1.3 / E19：一切非 2xx 一律 no-store，故障不得被 CDN 缓存。 */
   if (err instanceof AppError) {
-    return c.json(errorBody(err.code, err.message, err.details), err.status as never);
+    return c.json(errorBody(err.code, err.message, err.details), err.status as never, {
+      "cache-control": "no-store",
+    });
   }
   console.error("unhandled_error", err);
-  return c.json(errorBody("internal_error", "服务内部错误"), 500);
+  return c.json(errorBody("internal_error", "服务内部错误"), 500, {
+    "cache-control": "no-store",
+  });
 });
 
 app.route("/api", healthApi);
@@ -44,6 +48,15 @@ function servePage(path: string) {
 app.get("/admin", accessGuard, servePage("/admin.html"));
 app.get("/review", accessGuard, servePage("/review.html"));
 app.get("/ops", accessGuard, servePage("/ops.html"));
+/*
+ * `.html` 直连形态也要过 accessGuard（验收 E23 判据：无凭据 GET /admin.html 必须 302 到 Access 登录）。
+ * 不加这几条时，`/admin.html` 会被 assets 的 html_handling 307 到无守卫的 `/admin`——
+ * 匿名最终仍拿不到后台 HTML（护栏未破），但那一跳**不经过** accessGuard，
+ * 与 `run_worker_first` 白名单里列 `/admin.html`/`/review.html`/`/ops.html` 的意图（ADR 0001）不符。
+ */
+app.get("/admin.html", accessGuard, servePage("/admin.html"));
+app.get("/review.html", accessGuard, servePage("/review.html"));
+app.get("/ops.html", accessGuard, servePage("/ops.html"));
 app.get("/submit", servePage("/submit.html"));
 
 /**
@@ -124,15 +137,12 @@ app.all("*", async (c, next) => {
     return serveR2Read(c.env.BUCKET, key, method);
   }
 
-  /* `.json` 守卫（契约 §1.1 第 3 步 / R11）：一切以 `.json` 结尾但不属家族的请求一律
-     JSON 404，**永不**回退成资产层的 200 HTML。归一化已在判定前完成
-     （`/demo/manifest.json/` 归家族；`/nope.json/` 落守卫）。 */
+  /* `.json` 守卫（契约 §1.1 定稿 / 验收 E21(a)(b)、E26）：未命中家族但
+     **以 `.json` 结尾**、**或**「去掉唯一尾斜杠后以 `.json` 结尾」的请求，一律 JSON 404 + no-store，
+     **永不**回退成资产层的 HTML / 空 body。尾斜杠形态**不是**别名（E21(a)：`/acc-b/manifest.json/`
+     即使对象存在也必须 404）。 */
   if (isJsonGuardPath(pathname)) {
-    return readEgressResponse(
-      errorBody("not_found", `未找到静态对象：${normalizeReadPath(pathname)}`),
-      404,
-      "no-store",
-    );
+    return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
   }
 
   return next();
@@ -143,6 +153,13 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 /** 读取出口的 content-type 恒定值（契约把该值写死在响应头白名单里）。 */
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+
+/**
+ * 读取出口 404 的**固定短文本**（契约 §1.3 / 验收 E26，Ada 已定全环境不放宽）：
+ * 不含 R2 键串、不含请求路径片段、不含绑定名（BUCKET/R2）、不含绝对路径与堆栈，
+ * 也不留旧 dev 直通文案「未找到静态对象」。排障信息只进 Worker 日志（console.error 可带完整 key）。
+ */
+const NOT_FOUND_MESSAGE = "该地址没有可公开读取的对象";
 
 /** 空目录 / 空搜索索引的合成结果：空 ≠ 坏（R1），永不 404。 */
 const SYNTHETIC_EMPTY_INDEX = { generatedAt: "", datasets: [] };
@@ -197,7 +214,7 @@ async function serveR2Read(bucket: R2Bucket, key: string, method: string): Promi
         return readEgressResponse(SYNTHETIC_EMPTY_INDEX, 200, cacheControlForKey(key));
       }
       /* 版本 / 清单 / 指针 / Schema 不存在 → 404 JSON，且 404 一律 no-store（永不含 immutable）。 */
-      return readEgressResponse(errorBody("not_found", `未找到静态对象：${key}`), 404, "no-store");
+      return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
     }
 
     const headers = new Headers();

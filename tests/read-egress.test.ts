@@ -238,7 +238,7 @@ describe("read egress · 未登记 slug（R11）", () => {
       "/schemas/nope-slug/9.9.9.json",
       // 宽松匹配：形态奇怪的 slug 也必须由读取出口接管（404 JSON 而非 200 HTML）。
       "/Not_A_Slug/versions/1.json",
-      // 尾斜杠归一化后仍归家族：不能在剥斜杠这一步掉到资产层。
+      // 尾斜杠形态（E21(a)）：归 `.json` 守卫而非家族别名，仍 404 JSON。
       "/nope-slug/manifest.json/",
     ]) {
       const { res, text } = await read(path);
@@ -358,17 +358,31 @@ describe("read egress · 路由匹配（R11 宽松匹配）", () => {
     }
   });
 
-  it("尾斜杠归一化：剥掉唯一尾斜杠后再判家族（契约 §1.1 第 1 步）", () => {
-    expect(normalizeReadPath("/demo/manifest.json/")).toBe("demo/manifest.json");
-    expect(normalizeReadPath("//index.json/")).toBe("index.json");
+  it("尾斜杠**不当别名**：只剥前导 `/`，尾斜杠形态落 `.json` 守卫（E21(a)）", () => {
+    expect(normalizeReadPath("/demo/manifest.json/")).toBe("demo/manifest.json/");
+    expect(normalizeReadPath("//index.json")).toBe("index.json");
+    expect(normalizeReadPath("/./index.json")).toBe("./index.json");
     expect(normalizeReadPath("/")).toBe("");
-    // 只剥**一个**：双重尾斜杠「末尾恰有一个 /」不成立，故原样保留（仍含空段 → 不归家族）。
-    expect(normalizeReadPath("/demo/manifest.json//")).toBe("demo/manifest.json//");
 
-    expect(readEgressKeyForPath("/demo/manifest.json/")).toBe("demo/manifest.json");
-    expect(readEgressKeyForPath("/index.json/")).toBe("index.json");
-    expect(readEgressKeyForPath("/schemas/demo/1.0.0.json/")).toBe("schemas/demo/1.0.0.json");
-    expect(readEgressKeyForPath("/demo/manifest.json//")).toBeNull();
+    // 尾斜杠形态**不**归家族 → 交给守卫（即使对象存在也不得 200）。
+    expect(readEgressKeyForPath("/demo/manifest.json/")).toBeNull();
+    expect(readEgressKeyForPath("/index.json/")).toBeNull();
+    expect(readEgressKeyForPath("/schemas/demo/1.0.0.json/")).toBeNull();
+    expect(readEgressKeyForPath("/demo/manifest.json")).toBe("demo/manifest.json");
+
+    expect(isJsonGuardPath("/nope.json/")).toBe(true);
+    expect(isJsonGuardPath("/demo/manifest.json/")).toBe(true);
+    expect(isJsonGuardPath("/index.json/")).toBe(true);
+    // 双重尾斜杠：末尾不是 `.json`，不判守卫（由资产层 404，非 200）。
+    expect(isJsonGuardPath("/nope.json//")).toBe(false);
+  });
+
+  it("超长键（> 1024 字节）不查 R2，避免 5xx（E20）", () => {
+    const longSlug = "a".repeat(1024);
+    expect(readEgressKeyForPath(`/${longSlug}/manifest.json`)).toBeNull();
+    // 仍是 `.json` 结尾形态 → 守卫接管 → 404 JSON，不是 5xx。
+    expect(isJsonGuardPath(`/${longSlug}/manifest.json`)).toBe(true);
+    expect(readEgressKeyForPath("/acc-b/manifest.json")).toBe("acc-b/manifest.json");
   });
 
   it("`.json` 守卫：归一化后以 .json 结尾但不属家族（契约 §1.1 第 3 步）", () => {
@@ -391,22 +405,23 @@ describe("read egress · 路由匹配（R11 宽松匹配）", () => {
       "/sitemap.xml",
       "/index.json",
       "/demo/manifest.json",
-      "/demo/manifest.json/",
+      "/demo/manifest.json//",
     ]) {
       expect(isJsonGuardPath(path)).toBe(false);
     }
   });
 });
 
-describe("read egress · `.json` 守卫（R11 加强：404 恒 JSON，永不 HTML）", () => {
-  it("未命中家族但以 .json 结尾 → JSON 404 + no-store", async () => {
+describe("read egress · `.json` 守卫（R11 加强 + E21(a)：404 恒 JSON，永不 HTML）", () => {
+  it("未命中家族但以 .json 结尾（含尾斜杠形态）→ JSON 404 + no-store", async () => {
     for (const path of [
       "/nope.json",
-      // 追加项：先剥唯一尾斜杠再判守卫，否则这里会落到资产层回空体/HTML。
+      // 追加项：去掉唯一尾斜杠后以 .json 结尾也判守卫，否则会落到资产层回空体/HTML。
       "/nope.json/",
+      "/index.json/",
       "/assets/app.js.json",
       "/demo.json",
-      // 家族形态但层级不对（assets 的 html_handling 不会有机会接管）。
+      // 家族形态但层级不对。
       "/a/b/manifest.json",
       "/index.json/extra.json",
     ]) {
@@ -416,11 +431,78 @@ describe("read egress · `.json` 守卫（R11 加强：404 恒 JSON，永不 HTM
       expect(text.startsWith("<!doctype html"), path).toBe(false);
       expect(res.headers.get("cache-control"), path).toBe("no-store");
       expect(res.headers.get("cache-control") ?? "", path).not.toContain("immutable");
-      expect(res.headers.get("content-type"), path).toContain("application/json");
+      expect(res.headers.get("content-type"), path).toBe("application/json; charset=utf-8");
       assertHeaderWhitelist(res);
       expect((JSON.parse(text) as { error?: { code?: string } }).error?.code, path).toBe(
         "not_found",
       );
+    }
+  });
+
+  it("E21(a)：对象**存在**时，尾斜杠形态也不得被剥成 200 别名", async () => {
+    const id = await registerAndFreeze("egress-tail");
+    await postJson(`/api/admin/datasets/${id}/publish`, { payload: { name: "alice" } });
+
+    // 无尾斜杠：正常 200。
+    const canonical = await read("/egress-tail/manifest.json");
+    expect(canonical.res.status).toBe(200);
+
+    for (const path of [
+      "/egress-tail/manifest.json/",
+      "/egress-tail/latest.json/",
+      "/egress-tail/versions/1.json/",
+      "/schemas/egress-tail/1.0.0.json/",
+    ]) {
+      const { res, text } = await read(path);
+      expect(res.status, `${path} 不得 200`).toBe(404);
+      expect(res.headers.get("cache-control"), path).toBe("no-store");
+      expect(text.startsWith("{"), path).toBe(true);
+      expect((JSON.parse(text) as { error?: { code?: string } }).error?.code, path).toBe(
+        "not_found",
+      );
+    }
+  });
+
+  it("E20：超长 slug（R2 键 > 1024 字节）→ 404 JSON，绝不 5xx", async () => {
+    const longSlug = "a".repeat(1024);
+    const { res, text, body } = await read(`/${longSlug}/manifest.json`);
+    expect(res.status).toBe(404);
+    expect(body).toMatchObject({ error: { code: "not_found" } });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(text).not.toContain("Error:");
+  });
+
+  it("E26：404 body 的 message 不泄露 R2 键 / 请求路径 / 绑定名 / 堆栈 / 旧文案", async () => {
+    const forbidden = /未找到静态对象|BUCKET|R2|worktrees|node_modules|at Object\.|manifest\.json/;
+    for (const path of [
+      "/no-such-ds/manifest.json",
+      "/no-such-ds/latest.json",
+      "/no-such-ds/versions/1.json",
+      "/schemas/no-such-ds/1.0.0.json",
+      "/no-such-ds/search-index.json",
+      "/nope.json",
+      "/nope.json/",
+      "/package.json",
+    ]) {
+      const { res, text, body } = await read(path);
+      expect(res.status, path).toBe(404);
+      expect(text, `${path} 不得泄露`).not.toMatch(forbidden);
+      const message = (body as { error?: { message?: string } }).error?.message ?? "";
+      expect(message, path).toBeTruthy();
+      expect(message, path).not.toContain(path.replace(/^\//, ""));
+      expect(message.length, path).toBeLessThan(64);
+    }
+    // 比对：E14 判据里的 grep 六个 token，逐个不得出现。
+    const sample = await read("/no-such-ds/manifest.json");
+    for (const token of [
+      "未找到静态对象",
+      "BUCKET",
+      "/worktrees",
+      "node_modules",
+      "at Object.",
+      "manifest.json",
+    ]) {
+      expect(sample.text.includes(token), token).toBe(false);
     }
   });
 });

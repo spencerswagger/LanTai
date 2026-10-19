@@ -86,18 +86,28 @@ const READ_EGRESS_PATTERNS: RegExp[] = [
 ];
 
 /**
- * 匹配前的归一化（契约 §1.1 第 1 步）：剥掉**全部**前导 `/`；
- * 若末尾恰有**一个** `/` 且剥掉后非空，再剥掉该尾斜杠。
- *
- * **只剥一个**尾斜杠是刻意的：`/demo/manifest.json/` ≡ `/demo/manifest.json`（读取出口接管），
- * 而 `/demo/manifest.json//` 归一化后仍含空段 → 不当读取家族、由 `.json` 守卫兜底为 404 JSON。
- * 不做 percent-decode、不折叠 `.` / `..`、不做大小写归一——这类形态一律不落资产层。
+ * 匹配前的归一化（契约 §1.1 定稿口径 + 验收 E21）：**只剥前导 `/`**。
+ * 尾斜杠**不剥**——`/acc-b/manifest.json/` 不得被别名成 200（E21(a) 明确判 404 JSON）；
+ * 同样不 percent-decode、不折叠 `.` / `..`、不做大小写归一。
+ * （`//index.json`、`/./index.json` 在到达 Worker 之前已被平台归一，E22 只在 HTTP 层判。）
  */
 export function normalizeReadPath(pathname: string): string {
-  const stripped = pathname.replace(/^\/+/, "");
-  const exactlyOneTrailingSlash = stripped.endsWith("/") && !stripped.endsWith("//");
-  if (exactlyOneTrailingSlash && stripped.length > 1) return stripped.slice(0, -1);
-  return stripped;
+  return pathname.replace(/^\/+/, "");
+}
+
+/**
+ * 归一化后剥掉**唯一**一个尾斜杠（仅供 `.json` 守卫用，不参与家族匹配）。
+ * `/nope.json/` → `nope.json`（判守卫）；`/nope.json//` → `nope.json/`（末尾不是 `.json`，不判守卫）。
+ */
+function stripOneTrailingSlash(pathname: string): string {
+  return pathname.endsWith("/") && !pathname.endsWith("//") ? pathname.slice(0, -1) : pathname;
+}
+
+/** R2 键上限（1024 字节）。超限的 `bucket.get` 会抛错，绝不能让读者看到 5xx（E20）。 */
+const R2_KEY_MAX_BYTES = 1024;
+
+function keyByteLength(key: string): number {
+  return new TextEncoder().encode(key).length;
 }
 
 /**
@@ -112,20 +122,25 @@ export function readEgressKeyForPath(pathname: string): string | null {
   ) {
     return null;
   }
+  /* 超长键不查 R2：R2 上限 1024 字节，超限 get 会抛错 → 会变成 5xx（E20 判「绝不 5xx」）。 */
+  if (keyByteLength(normalized) > R2_KEY_MAX_BYTES) return null;
   return READ_EGRESS_PATTERNS.some((re) => re.test(normalized)) ? normalized : null;
 }
 
 /**
- * `.json` 守卫（契约 §1.1 第 3 步，R11）：未命中读取家族、但归一化后**以 `.json` 结尾**的路径，
- * 一律由读取出口回 JSON 404，**绝不**落到资产层回 200 HTML。
- * 判定在**尾斜杠归一化之后**——`/demo/manifest.json/` 先归家族，`/nope.json/` 才落守卫。
+ * `.json` 守卫（契约 §1.1 定稿 + 验收 E21/E26）：未命中读取家族、但
+ * **以 `.json` 结尾**，**或**「去掉唯一尾斜杠后以 `.json` 结尾」的路径，
+ * 一律由读取出口回 JSON 404 + `no-store`，**绝不**落到资产层回 200 HTML / 空 body。
+ *
+ * 守卫覆盖两类形态：`/nope.json`（直接以 .json 结尾）、`/acc-b/manifest.json/`（尾斜杠形态，
+ * 即 E21(a)：**不**把尾斜杠剥成别名，因此即使对象存在也必须 404）。
  *
  * 维护约束（运维级遗留）：`public/` 一旦新增 `.json` 资产，必须**先**给这里加白名单例外，
- * 否则守卫会吞掉真实文件、R11 判定失效。当前前提可复跑：`find public -name '*.json' | wc -l` = 0。
+ * 否则守卫会吞掉真实文件、E21/E27 判定失效。当前前提可复跑：`find public -name '*.json' | wc -l` = 0。
  */
 export function isJsonGuardPath(pathname: string): boolean {
   const normalized = normalizeReadPath(pathname);
   if (normalized === "") return false;
   if (readEgressKeyForPath(normalized) !== null) return false;
-  return normalized.endsWith(".json");
+  return normalized.endsWith(".json") || stripOneTrailingSlash(normalized).endsWith(".json");
 }
