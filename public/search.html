@@ -136,6 +136,19 @@
         return card;
       }
 
+      function searchableScope() {
+        const names = [];
+        docs.forEach((d) => {
+          (d.fields || []).forEach((f) => {
+            if (f && f.name && names.indexOf(f.name) === -1) names.push(f.name);
+          });
+        });
+        const shown = names.slice(0, 12).join("、");
+        const more = names.length > 12 ? ` 等 ${names.length} 个字段` : "";
+        const slugs = docs.map((d) => d.slug).slice(0, 6).join("、");
+        return `${shown || "（索引未声明字段名）"}${more}；数据集：${slugs || "（暂无）"}`;
+      }
+
       function render() {
         const raw = input.value.trim();
         const q = raw.toLowerCase();
@@ -175,7 +188,7 @@
           results.appendChild(
             LT.emptyState(
               "没有匹配的数据集",
-              `没有 slug、标题、字段或数据内容包含「${raw}」的数据集。`,
+              `没有 slug、标题、字段或数据内容包含「${raw}」的数据集。可搜范围：${searchableScope()}。`,
               LT.el("button", {
                 class: "btn btn--sm",
                 type: "button",
@@ -189,6 +202,20 @@
             ),
           );
           return;
+        }
+
+        if (q && matched.length > 40) {
+          const hint = LT.el("div", { class: "callout callout--info" }, [
+            LT.el("div", { class: "stack", style: "margin:0" }, [
+              LT.el("strong", { text: `结果过多（${matched.length} 项），请缩小范围` }),
+              LT.el("p", {
+                class: "muted",
+                style: "margin:0",
+                text: "补充关键词，或改用字段名、标题片段来收敛结果。",
+              }),
+            ]),
+          ]);
+          results.appendChild(hint);
         }
 
         const cards = LT.el("div", { class: "cards" });

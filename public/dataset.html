@@ -345,6 +345,53 @@
         return card;
       }
 
+      /* M3：详情页首屏即给出「版本 + 哈希前 8 位 + 下载 + 复制链接」，无需二级滚动。 */
+      function verifyBar(manifest, latestVersion, contentHash) {
+        var hash8 = contentHash ? String(contentHash).slice(0, 8) : "—";
+        var rawUrl = latestVersion
+          ? `/${manifest.slug}/versions/${latestVersion}.json`
+          : `/${manifest.slug}/latest.json`;
+        var absUrl = location.origin + rawUrl;
+
+        var card = LT.el("div", { class: "card" });
+        card.appendChild(
+          LT.el("div", { class: "card__head" }, [
+            LT.el("h2", { style: "margin:0", text: "自行核对" }),
+            LT.el("a", { class: "mono", href: rawUrl, text: `${manifest.slug}/latest.json` }),
+          ]),
+        );
+        card.appendChild(
+          LT.el("div", { class: "card__body stack" }, [
+            LT.el("div", { class: "cluster" }, [
+              LT.el("span", {
+                class: "tag tag--published mono",
+                text: latestVersion ? `最新数据 v${latestVersion}` : "尚无已发布数据",
+              }),
+              LT.el("span", { class: "muted", text: "内容哈希" }),
+              LT.el("code", { class: "mono", text: hash8, title: contentHash || "" }),
+              LT.el("a", {
+                class: "btn btn--sm btn--primary",
+                href: rawUrl,
+                download: "",
+                text: "下载快照 JSON",
+              }),
+              LT.el("button", {
+                class: "btn btn--sm",
+                type: "button",
+                text: "复制快照链接",
+                onclick: () => { copyText(absUrl, "已复制快照链接"); },
+              }),
+            ]),
+            LT.el("p", {
+              class: "hint",
+              style: "margin:0",
+              text: "自行核对步骤：按上面的地址下载快照，本地重算内容哈希，其前 8 位与页面显示一致，即说明这一版内容未被改动。",
+            }),
+          ]),
+        );
+        return card;
+      }
+
       function renderDataset(manifest, schemaDoc, latest) {
         LT.clear(view);
 
@@ -359,6 +406,8 @@
 
         var body = LT.el("div", { class: "stack-lg", style: "padding-top:var(--s6)" });
         view.appendChild(body);
+
+        body.appendChild(verifyBar(manifest, latestVersion, contentHash));
 
         body.appendChild(
           LT.el("dl", { class: "kv" }, [

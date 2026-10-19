@@ -700,10 +700,20 @@
             LT.busy(els.submit, false);
             setStep(STEP_DONE);
             renderSuccess(res);
-            LT.toast("提交成功", { type: "ok" });
             state.turnstileToken = "";
             if (window.turnstile) {
               try { window.turnstile.reset(); } catch (e) {}
+            }
+            /* M4：令牌写入本地记忆，并自动跳到进度页（令牌带在 URL 上）。 */
+            var token = (res?.token) || "";
+            if (token) {
+              try { localStorage.setItem("lantai.trackedToken", token); } catch (e) {}
+              LT.toast("提交成功，正在跳转到进度页…", { type: "ok" });
+              window.setTimeout(() => {
+                location.href = `/status?token=${encodeURIComponent(token)}`;
+              }, 1200);
+            } else {
+              LT.toast("提交成功", { type: "ok" });
             }
           })
           .catch((err) => {

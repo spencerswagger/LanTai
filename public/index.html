@@ -334,7 +334,10 @@
       }
       body.textContent = "";
       const loading = document.createElement("div"); loading.className = "opt__inner";
-      loading.innerHTML = '<div class="opt__cap"><b>载入中…</b></div>';
+      const cap = document.createElement("div"); cap.className = "opt__cap";
+      cap.innerHTML = "<b>载入中…</b> · 正在读取该数据集的快照";
+      loading.appendChild(cap);
+      loading.appendChild(LT.skeleton(5));
       body.appendChild(loading);
       fetch(`/${doc.slug}/versions/${encodeURIComponent(doc.dataVersion)}.json`)
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
@@ -433,6 +436,19 @@
       scopeEl.textContent = (term ? `命中 ${n} 项` : `共 ${docs.length} 个数据集`) +
         " · 搜索范围：数据集名称、字段与数据内容";
 
+      /* M2：宽泛关键词命中过多时给出明确提示，避免「页面卡住」的错觉。 */
+      if (term && n > 40) {
+        const hint = document.createElement("div");
+        hint.className = "callout callout--info";
+        const hi = document.createElement("div"); hi.className = "stack"; hi.style.margin = "0";
+        const hs = document.createElement("strong"); hs.textContent = `结果过多（${n} 项），请缩小范围`;
+        const hp = document.createElement("p"); hp.className = "muted"; hp.style.margin = "0";
+        hp.textContent = "补充关键词或改用字段名可收敛结果；内容检索仍在后台继续，加载完成前命中数可能还会增加。";
+        hi.appendChild(hs); hi.appendChild(hp);
+        hint.appendChild(hi);
+        resultsEl.insertBefore(hint, resultsEl.firstChild);
+      }
+
       let target = 0;
       if (selKey) {
         const j = flat.findIndex((e) => e.key === selKey);
@@ -526,26 +542,70 @@
       });
     }
 
-    /* ---------- 载入索引 ---------- */
-    fetch("/search/index.json")
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((index) => {
-        docs = (index?.datasets) || [];
-        buildChips();
-        render();
-        input.focus();
-        const totalTerms = docs.reduce((n, d) => n + (d.termCount || 0), 0);
-        if (totalTerms <= CONTENT_PREFETCH_BUDGET) {
-          docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueueContent(d.slug); });
-        }
-      })
-      .catch(() => {
-        scopeEl.textContent = "数据目录暂不可用";
-        const box = document.createElement("div");
-        box.className = "empty";
-        box.innerHTML = "<h3>数据目录暂不可用</h3><p class=\"muted\">无法读取 /search/index.json，请稍后重试。</p>";
-        resultsEl.appendChild(box);
-      });
+    /* ---------- 载入索引（M1：加载态 / 失败态 / 重试，失败绝不呈现为「空目录」） ---------- */
+    function renderCatalogSkeleton() {
+      resultsEl.textContent = "";
+      const wrap = document.createElement("div"); wrap.className = "cards";
+      for (let i = 0; i < 3; i++) {
+        const c = document.createElement("div"); c.className = "card";
+        c.appendChild(LT.skeleton(3));
+        wrap.appendChild(c);
+      }
+      resultsEl.appendChild(wrap);
+    }
+
+    function renderCatalogError(reason) {
+      resultsEl.textContent = "";
+      const box = document.createElement("div");
+      box.className = "callout callout--danger";
+      box.setAttribute("role", "alert");
+      const inner = document.createElement("div");
+      inner.className = "stack"; inner.style.margin = "0";
+      const title = document.createElement("strong"); title.textContent = "目录加载失败";
+      const msg = document.createElement("p"); msg.className = "muted"; msg.style.margin = "0";
+      msg.textContent = reason + " 目录读取失败并不代表平台暂无数据，请重试。";
+      const retry = document.createElement("button");
+      retry.type = "button"; retry.className = "btn btn--sm"; retry.textContent = "重试";
+      retry.addEventListener("click", () => loadIndex());
+      const row = document.createElement("div"); row.className = "cluster"; row.appendChild(retry);
+      inner.appendChild(title); inner.appendChild(msg); inner.appendChild(row);
+      box.appendChild(inner);
+      resultsEl.appendChild(box);
+    }
+
+    function loadIndex() {
+      scopeEl.textContent = "正在加载数据目录…";
+      cstatusEl.textContent = "";
+      renderCatalogSkeleton();
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 10000);
+      fetch("/search/index.json", { headers: { accept: "application/json" }, signal: ctl.signal })
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then((index) => {
+          docs = (index?.datasets) || [];
+          buildChips();
+          render();
+          input.focus();
+          if (!docs.length) {
+            scopeEl.textContent = "目录已加载，但平台尚无已发布数据集 · 搜索范围：数据集名称、字段与数据内容";
+          }
+          const totalTerms = docs.reduce((n, d) => n + (d.termCount || 0), 0);
+          if (totalTerms <= CONTENT_PREFETCH_BUDGET) {
+            docs.forEach((d) => { if ((d.termCount || 0) > 0) enqueueContent(d.slug); });
+          }
+        })
+        .catch((err) => {
+          renderCatalogError(
+            err && err.name === "AbortError"
+              ? "读取数据目录超时（10 秒）。"
+              : `无法读取数据目录（${(err && err.message) || "网络错误"}）。`,
+          );
+          scopeEl.textContent = "目录加载失败 · 可点击重试";
+        })
+        .finally(() => clearTimeout(timer));
+    }
+
+    loadIndex();
   })();
 </script>
 </body>

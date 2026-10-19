@@ -185,6 +185,7 @@
         }
         lastToken = token;
         els.token.value = token;
+        try { localStorage.setItem("lantai.trackedToken", token); } catch (e) {}
         try {
           history.replaceState(null, "", `/status?token=${encodeURIComponent(token)}`);
         } catch (e) {}
@@ -208,6 +209,10 @@
       });
 
       var initial = LT.param("token");
+      /* M4：URL 没带令牌时回落到本地记忆，提交后刷新/换标签页仍能直接看到状态。 */
+      if (!initial) {
+        try { initial = localStorage.getItem("lantai.trackedToken") || ""; } catch (e) { initial = ""; }
+      }
       if (initial) query(initial);
       else renderInitial();
     })();
