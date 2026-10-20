@@ -579,6 +579,9 @@ describe("read egress · /sitemap.xml 同源性（Vera 裁定：slug 集合与 /
       expect(locs, slug).toContain(`https://lantai.test/${slug}/manifest.json`);
     }
 
+    // 数量式判据：静态入口 3 条 + 每个数据集 2 条（详情页 + 清单），不含任何深链。
+    expect(locs.length, JSON.stringify(locs)).toBe(3 + 2 * slugs.length);
+
     // 禁止项：快照深链、受保护页、接口路径一律不得出现。
     for (const u of locs) {
       expect(u, u).not.toMatch(/\/versions\/[^/]+\.json$/);
