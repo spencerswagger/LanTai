@@ -617,6 +617,15 @@ describe("read egress · 受保护页集合三处同源（契约 §1.2 不变式
     for (const file of ["/submit.html", "/index.html", "/dataset.html", "/status.html"]) {
       expect(entries, file).not.toContain(file);
     }
+    /* 平台页面路径（无扩展名入口）必须过 Worker：否则 `POST /dataset` 这类非 GET 请求
+       会被资产层以「405 + 非 JSON」应答，E31-⑤ 的要求（404 + no-store + 无 allow）在真实链路上不成立。 */
+    for (const page of ["/", "/search", "/submit", "/status", "/dataset"]) {
+      expect(entries, page).toContain(page);
+    }
+    /* 静态资源保持边缘直出，不进白名单（缓存与命中路径不变）。 */
+    for (const asset of ["/styles.css", "/app.js"]) {
+      expect(entries, asset).not.toContain(asset);
+    }
   });
 });
 
@@ -682,7 +691,7 @@ describe("read egress · 非读取族的非 GET/HEAD（契约 §1.3 405 行注 /
   /* 405 只留给「命中读取家族但方法不对」；未进家族的非 GET/HEAD 必须 404 且恒 JSON + no-store。
      不显式兜住时，Hono 会对已注册的页面路由（/admin 等）按方法不匹配回 405（且 body 非 JSON）。 */
   it("未命中家族的非 GET/HEAD → 404 not_found + no-store（不是 405，无 allow 头）", async () => {
-    for (const path of ["/admin", "/admin.html", "/styles.css", "/submit", "/nope"]) {
+    for (const path of ["/admin", "/admin.html", "/styles.css", "/submit", "/dataset", "/nope"]) {
       for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
         const { res, body, text } = await read(path, { method });
         expect(res.status, `${method} ${path}`).toBe(404);
