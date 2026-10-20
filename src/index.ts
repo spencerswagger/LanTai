@@ -49,14 +49,18 @@ app.get("/admin", accessGuard, servePage("/admin.html"));
 app.get("/review", accessGuard, servePage("/review.html"));
 app.get("/ops", accessGuard, servePage("/ops.html"));
 /*
- * `.html` 直连形态也要过 accessGuard（验收 E23 判据：无凭据 GET /admin.html 必须 302 到 Access 登录）。
- * 不加这几条时，`/admin.html` 会被 assets 的 html_handling 307 到无守卫的 `/admin`——
- * 匿名最终仍拿不到后台 HTML（护栏未破），但那一跳**不经过** accessGuard，
- * 与 `run_worker_first` 白名单里列 `/admin.html`/`/review.html`/`/ops.html` 的意图（ADR 0001）不符。
+ * 受保护页的 `.html` 直连形态：**307 canonical 到受保护的无扩展名路由**，绝不吐页面本体。
+ *
+ * （E23 P0 根因）test 环境 `SKIP_ACCESS_DEV=true` 时 Worker 内 accessGuard 是直通放行，
+ * 真正拦匿名的是**边缘 Cloudflare Access**，而它的路径范围只覆盖无扩展名路由
+ * （/admin、/review、/ops、/api/admin/*）。旧实现把这三个 `.html` 排进 `run_worker_first`
+ * 又直接 servePage，等于绕掉了资产层对 `.html` 的 canonical 307，
+ * 匿名因此能直接取到后台 HTML 本体（线上实测 200）。
+ * 这样处理与其它页面的资产层行为一致：`/submit.html`→`/submit`、`/index.html`→`/`。
  */
-app.get("/admin.html", accessGuard, servePage("/admin.html"));
-app.get("/review.html", accessGuard, servePage("/review.html"));
-app.get("/ops.html", accessGuard, servePage("/ops.html"));
+app.get("/admin.html", (c) => c.redirect("/admin", 307));
+app.get("/review.html", (c) => c.redirect("/review", 307));
+app.get("/ops.html", (c) => c.redirect("/ops", 307));
 app.get("/submit", servePage("/submit.html"));
 
 /**

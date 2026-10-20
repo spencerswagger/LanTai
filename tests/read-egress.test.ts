@@ -534,6 +534,23 @@ describe("read egress · 方法语义（GET / HEAD，其余 405）", () => {
   });
 });
 
+describe("read egress · 受保护页的 .html 直连（E23 P0：不得给出页面本体）", () => {
+  it("三个后台页的 .html 形态一律 307 canonical 到受保护的无扩展名路由，且不回页面本体", async () => {
+    const pairs: [string, string][] = [
+      ["/admin.html", "/admin"],
+      ["/review.html", "/review"],
+      ["/ops.html", "/ops"],
+    ];
+    for (const [from, to] of pairs) {
+      const res = await callApp(from);
+      expect(res.status, from).toBe(307);
+      expect(new URL(res.headers.get("location") ?? "", "https://lantai.test").pathname).toBe(to);
+      const text = await res.text();
+      expect(text, from).not.toContain("<!doctype html");
+    }
+  });
+});
+
 describe("read egress · 非读取族的非 GET/HEAD（契约 §1.3 405 行注 / E31 第 5 项）", () => {
   /* 405 只留给「命中读取家族但方法不对」；未进家族的非 GET/HEAD 必须 404 且恒 JSON + no-store。
      不显式兜住时，Hono 会对已注册的页面路由（/admin 等）按方法不匹配回 405（且 body 非 JSON）。 */
