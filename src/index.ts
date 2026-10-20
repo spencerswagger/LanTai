@@ -74,17 +74,18 @@ app.get("/sitemap.xml", async (c) => {
     const object = await c.env.BUCKET.get(PLATFORM_INDEX_KEY);
     if (object) {
       const index = await object.json<{
-        datasets?: { slug?: string; currentDataVersion?: string }[];
+        datasets?: { slug?: string }[];
       }>();
+      /*
+       * Sitemap 口径（Vera 裁定）：loc 的 slug 集合必须与 `/index.json` 同源一致，
+       * 且**只收人类可读入口**——数据集详情页与清单文件。
+       * 不收：受保护页（/admin·/review·/ops）、接口（/api/*）、以及任何快照深链
+       * （`/{slug}/versions/{v}.json`：快照是给程序取数的不可变产物，不是抓取入口）。
+       */
       for (const d of index?.datasets ?? []) {
         if (!d?.slug) continue;
         urls.push(`${origin}/dataset?slug=${encodeURIComponent(d.slug)}`);
         urls.push(`${origin}/${d.slug}/manifest.json`);
-        if (d.currentDataVersion) {
-          urls.push(
-            `${origin}/${d.slug}/versions/${encodeURIComponent(d.currentDataVersion)}.json`,
-          );
-        }
       }
     }
   } catch {

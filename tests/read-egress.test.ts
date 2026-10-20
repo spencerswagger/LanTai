@@ -534,19 +534,54 @@ describe("read egress · 方法语义（GET / HEAD，其余 405）", () => {
   });
 });
 
-describe("read egress · 受保护页的 .html 直连（E23 P0：不得给出页面本体）", () => {
-  it("三个后台页的 .html 形态一律 307 canonical 到受保护的无扩展名路由，且不回页面本体", async () => {
-    const pairs: [string, string][] = [
-      ["/admin.html", "/admin"],
-      ["/review.html", "/review"],
-      ["/ops.html", "/ops"],
+describe("read egress · 受保护页的 .html 直连（E23 新口径：判据是「匿名拿不到内容」，不是「必须 302」）", () => {
+  it("三个后台页的 .html 形态：状态非 200、body 0 字节、不含后台页标记，canonical 到受保护的无扩展名路由", async () => {
+    const cases: [string, string, string][] = [
+      ["/admin.html", "/admin", "数据集与 Schema"],
+      ["/review.html", "/review", "审阅台"],
+      ["/ops.html", "/ops", "运营"],
     ];
-    for (const [from, to] of pairs) {
+    for (const [from, target, marker] of cases) {
       const res = await callApp(from);
+      expect(res.status, from).not.toBe(200);
       expect(res.status, from).toBe(307);
-      expect(new URL(res.headers.get("location") ?? "", "https://lantai.test").pathname).toBe(to);
+      expect(new URL(res.headers.get("location") ?? "", "https://lantai.test").pathname, from).toBe(
+        target,
+      );
       const text = await res.text();
-      expect(text, from).not.toContain("<!doctype html");
+      expect(text.length, from).toBe(0);
+      expect(text, from).not.toContain(marker);
+      expect(text.toLowerCase(), from).not.toContain("<!doctype html");
+    }
+  });
+  /* 对照断言（非受保护页 `/submit.html`、`/docs/*.html` 的 canonical 307）属**资产层**行为，
+     进程内直调 app 不经 ASSETS，故只能在 HTTP 层验证；两类不混用判据。 */
+});
+
+describe("read egress · /sitemap.xml 同源性（Vera 裁定：slug 集合与 /index.json 同源，且不收深链）", () => {
+  it("收录每个数据集的入口与清单，且不含快照深链 / 受保护页 / 接口", async () => {
+    await registerAndFreeze("sitemap-a");
+
+    const res = await callApp("/sitemap.xml");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/xml");
+    const xml = await res.text();
+    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+
+    // 同源：/index.json 里的 slug 必须逐一出现在 loc 集合中（详情页 + 清单各一条）。
+    const index = await read("/index.json");
+    const slugs = (index.body.datasets as { slug: string }[]).map((d) => d.slug);
+    expect(slugs).toContain("sitemap-a");
+    for (const slug of slugs) {
+      expect(locs, slug).toContain(`https://lantai.test/dataset?slug=${slug}`);
+      expect(locs, slug).toContain(`https://lantai.test/${slug}/manifest.json`);
+    }
+
+    // 禁止项：快照深链、受保护页、接口路径一律不得出现。
+    for (const u of locs) {
+      expect(u, u).not.toMatch(/\/versions\/[^/]+\.json$/);
+      expect(u, u).not.toMatch(/^\S+\/(admin|review|ops)(\.html)?$/);
+      expect(u, u).not.toContain("/api/");
     }
   });
 });
