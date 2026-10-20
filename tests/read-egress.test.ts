@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import SEED_SCRIPT_SRC from "../scripts/seed-demo.mjs?raw";
 import type { Env } from "../src/env";
 import { sha256Hex } from "../src/lib/hash";
+import { PROTECTED_PAGES, PROTECTED_ROUTES } from "../src/protected-pages";
 import {
   isJsonGuardPath,
   manifestKey,
@@ -10,6 +11,7 @@ import {
   readEgressKeyForPath,
   SEARCH_INDEX_KEY,
 } from "../src/r2/keys";
+import WRANGLER_RAW from "../wrangler.jsonc?raw";
 import { callApp, json, postJson } from "./helpers";
 
 /**
@@ -582,6 +584,93 @@ describe("read egress · /sitemap.xml 同源性（Vera 裁定：slug 集合与 /
       expect(u, u).not.toMatch(/\/versions\/[^/]+\.json$/);
       expect(u, u).not.toMatch(/^\S+\/(admin|review|ops)(\.html)?$/);
       expect(u, u).not.toContain("/api/");
+    }
+  });
+});
+
+describe("read egress · 受保护页集合三处同源（契约 §1.2 不变式，防搬家式修复）", () => {
+  it("canonical 目标必须落在受保护集合内，且 Worker 永不直出 `.html` 本体", async () => {
+    for (const route of PROTECTED_ROUTES) {
+      expect(PROTECTED_ROUTES).toContain(route);
+      const file = PROTECTED_PAGES[route];
+      const res = await callApp(`/${file}`);
+      expect(res.status, `/${file}`).not.toBe(200);
+      const target = new URL(res.headers.get("location") ?? "", "https://lantai.test").pathname;
+      expect(target, `/${file} 的 canonical 目标必须还在受保护集合内`).toBe(`/${route}`);
+      expect(PROTECTED_ROUTES.map((r) => `/${r}`)).toContain(target);
+      expect((await res.text()).toLowerCase()).not.toContain("<!doctype html");
+    }
+  });
+
+  it("部署白名单与代码同源：三个受保护页的两种形态都在 `run_worker_first` 里，非受保护页不在", () => {
+    const block = WRANGLER_RAW.match(/"run_worker_first"\s*:\s*\[([^\]]*)\]/s)?.[1] ?? "";
+    const entries = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const route of PROTECTED_ROUTES) {
+      expect(entries, `/${route}`).toContain(`/${route}`);
+      expect(entries, `/${PROTECTED_PAGES[route]}`).toContain(`/${PROTECTED_PAGES[route]}`);
+    }
+    // 非受保护页不得进白名单：它们必须继续由资产层做 canonical 307（对照断言，两类不混用判据）。
+    for (const file of ["/submit.html", "/index.html", "/dataset.html", "/status.html"]) {
+      expect(entries, file).not.toContain(file);
+    }
+  });
+});
+
+describe("read egress · M5b/E11 + E10 对称 + E25 哨兵串判据", () => {
+  it("stage 后 manifest.preview === previewVersion、preview.json 可达、latest 不变且不在 dataVersions[]", async () => {
+    const datasetId = await registerAndFreeze("egress-preview");
+    await postJson(`/api/admin/datasets/${datasetId}/publish`, { payload: { name: "base" } });
+    const sub = await postJson("/api/submissions", {
+      slug: "egress-preview",
+      payload: { name: "candidate" },
+    });
+    const { submissionId } = await json<{ submissionId: string }>(sub);
+    const stage = await postJson(`/api/admin/submissions/${submissionId}/stage`, {});
+    expect(stage.status).toBe(200);
+    const { previewVersion } = await json<{ previewVersion: string }>(stage);
+
+    /* E11：manifest 是指针的发现入口，stage 之后必须回写 preview（不留悬空/滞后引用）。 */
+    const manifest = await read("/egress-preview/manifest.json");
+    const body = manifest.body as {
+      latest: string | null;
+      preview: string | null;
+      dataVersions: { version: string }[];
+    };
+    expect(body.preview).toBe(previewVersion);
+    expect(body.latest).toBe("1");
+    /* preview 只作指针字段：不进 dataVersions[]（预览可达但不可枚举，契约 §6）。 */
+    expect(body.dataVersions.map((v) => v.version)).not.toContain(previewVersion);
+
+    /* preview.json 可达，且与 manifest.preview 同源。 */
+    const preview = await read("/egress-preview/preview.json");
+    expect(preview.res.status).toBe(200);
+    expect((preview.body as { dataVersion: string }).dataVersion).toBe(previewVersion);
+
+    /* E10 对称不变式：latest.json ⇔ manifest.latest。 */
+    const latest = await read("/egress-preview/latest.json");
+    expect((latest.body as { dataVersion: string }).dataVersion).toBe(body.latest);
+  });
+
+  it("E25 哨兵串：指针/索引类文档一律 0，只有 `versions/*.json`（putImmutable 数据快照）允许非 0", async () => {
+    const datasetId = await registerAndFreeze("egress-sentinel");
+    await postJson(`/api/admin/datasets/${datasetId}/publish`, {
+      payload: { name: "SENTINEL-7f3a91", age: 7 },
+    });
+
+    // 允许：数据快照本体（不可变产物）当然可以含哨兵串。
+    const snapshot = await read("/egress-sentinel/versions/1.json");
+    expect(snapshot.text).toContain("SENTINEL-7f3a91");
+
+    // 必须为 0：指针 / 索引 / 清单类文档不得把 payload 值漏出去。
+    for (const path of [
+      "/index.json",
+      "/search/index.json",
+      "/egress-sentinel/manifest.json",
+      "/egress-sentinel/latest.json",
+    ]) {
+      const doc = await read(path);
+      expect(doc.text, path).not.toContain("SENTINEL-7f3a91");
     }
   });
 });

@@ -5,6 +5,7 @@ import { AppError } from "./lib/errors";
 import { errorBody } from "./lib/response";
 import { accessGuard } from "./middleware/access";
 import { handleScheduled } from "./ops/cron";
+import { PROTECTED_PAGES, PROTECTED_ROUTES } from "./protected-pages";
 import {
   cacheControlForKey,
   isJsonGuardPath,
@@ -45,22 +46,22 @@ function servePage(path: string) {
     );
 }
 
-app.get("/admin", accessGuard, servePage("/admin.html"));
-app.get("/review", accessGuard, servePage("/review.html"));
-app.get("/ops", accessGuard, servePage("/ops.html"));
 /*
- * 受保护页的 `.html` 直连形态：**307 canonical 到受保护的无扩展名路由**，绝不吐页面本体。
+ * 受保护页：集合在 `src/protected-pages.ts` **只声明一处**，
+ * 守卫挂载点 / canonical 目标 / 部署白名单三处同源（契约 §1.2 不变式）。
  *
- * （E23 P0 根因）test 环境 `SKIP_ACCESS_DEV=true` 时 Worker 内 accessGuard 是直通放行，
- * 真正拦匿名的是**边缘 Cloudflare Access**，而它的路径范围只覆盖无扩展名路由
- * （/admin、/review、/ops、/api/admin/*）。旧实现把这三个 `.html` 排进 `run_worker_first`
- * 又直接 servePage，等于绕掉了资产层对 `.html` 的 canonical 307，
- * 匿名因此能直接取到后台 HTML 本体（线上实测 200）。
- * 这样处理与其它页面的资产层行为一致：`/submit.html`→`/submit`、`/index.html`→`/`。
+ *  `/<route>`        —— 守卫挂载点：Worker 不直出，鉴权由边缘 Access 承担，accessGuard 为纵深防御；
+ *  `/<route>.html`   —— 只做 307 canonical 到 `/<route>`，**永不** servePage（E23 P0 根因：
+ *                       test 环境 `SKIP_ACCESS_DEV=true` 时 accessGuard 直通，若这里直出页面，
+ *                       匿名就能拿到后台 HTML 本体，而 Access 的路径范围只覆盖无扩展名路由）。
+ * 与其它页面的资产层行为同形：`/submit.html`→`/submit`、`/index.html`→`/`。
  */
-app.get("/admin.html", (c) => c.redirect("/admin", 307));
-app.get("/review.html", (c) => c.redirect("/review", 307));
-app.get("/ops.html", (c) => c.redirect("/ops", 307));
+for (const route of PROTECTED_ROUTES) {
+  app.get(`/${route}`, accessGuard, servePage(`/${PROTECTED_PAGES[route]}`));
+}
+for (const route of PROTECTED_ROUTES) {
+  app.get(`/${PROTECTED_PAGES[route]}`, (c) => c.redirect(`/${route}`, 307));
+}
 app.get("/submit", servePage("/submit.html"));
 
 /**
