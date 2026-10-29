@@ -91,31 +91,20 @@ A tests/vite-env.d.ts
 4. 本分支**等待合并评审**。按收工口径停在此处：**不 push**。
 ---
 
-## 7. 契约追加项 **§1.5**（指针类响应的 302 语义）— PR #1 / Owl 必改项 2
+## 7. `/{slug}/latest.json` 302 —— 实现侧索引（判据以正本为准）
 
-> **正式位置 = Ada 契约 `docs/contracts/public-read-egress.md` §1.5（子条 a–e），不占 E 号。**
-> E-号与 Vera 的验收清单同键、只能由 Vera 发布，故代码/测试里**不再出现**任何临时 E 号锚点
-> （曾用占位号已全部撤除，避免重编号断锚）；本节只是实现侧的草稿正文，等 Ada 在 `arch/read-path-contract`
-> 上落笔，正文以她为准 —— **本节不是第二套权威正文，也不是 AC 号**。
-> 该正本在当前仓库里是 **gitignore 的 `/docs/`**（属 Ada 的树，本分支不可写），
-> 故本节先落地在 PR 可评审的位置；**待 Ada 收编进正本**，文字以本节为准。
+本节**只是指针**，不再承载任何正文。权威口径分两处：
 
-**§1.5**　`/{slug}/latest.json` 命中 `LATEST_REDIRECT_SLUGS` 白名单时回 **302**，该响应
-**按「指针类」缓存**：`cache-control: public, max-age=60, must-revalidate`，**空体**（GET 与 HEAD 同形，
-不带 `content-type` / `content-length`）。
+| 归属 | 位置 | 内容 |
+|---|---|---|
+| 验收判据（正式编号 **E32**） | Vera《公开读取出口 · 读者侧验收清单》`prod/read-egress-acceptance` @ **`dc77fce`**（正本 E1–E32） | E32 五子条：触发面 / 只允许 302 且 `n === manifest.latest` / 302 属指针缓存、错误面 `no-store`，两套互不覆盖 / 坏指针一律不跳 / HEAD 同 302 空体；非 GET·HEAD 405 |
+| 契约正文（**§1.5**） | Ada `docs/contracts/public-read-egress.md` @ `arch/read-path-contract` | §1.5 写全 302 语义；§2 只留一行白名单成员登记（现为 `channel-preset-pack`） |
 
-1. 302 **不是错误响应**，因此**不得**套用「错误面一律 `no-store`」；也**不得**给 `immutable`
-   （否则「最新」会滞后一个版本周期）。
-2. 错误面（4xx / 5xx，含 `read_unavailable` / `internal_error`）**仍一律 `no-store`**，
-   与 302 的缓存语义互不覆盖。
-3. 302 的响应头白名单 = `location` / `cache-control`，不得出现任何 `x-lantai-*`；
-   **不声明 `content-type`**（§1 头白名单只允许 `application/json`，带 `text/plain` 正文会与
-   §1.4 / E31 第 4 项「恒 application/json」冲突），也**不声明 `content-length`**；
-   GET 与 HEAD 同形、都是空体（选 (a)：302 空体，语义与 HEAD 一致、避开 MIME 冲突）。
-4. 读指针失败一律**不跳转**，按情形分开（细分见下，测试锚点 `latest-json-redirect.test.ts` ④/④′）：
-   - **存储不可用**（`bucket.get` 抛错）→ 退回 `serveR2Read`，给既有语义的 `read_unavailable` 500 + `no-store`；
-   - **指针不存在** → 退回 `serveR2Read` → 404 JSON + `no-store`；
-   - **指针存在但损坏**（非 JSON / 缺 `dataVersion` / `dataVersion` 不是**非空纯数字**串）→
-     **404 JSON + `no-store`**，绝不 302 到 `versions/undefined.json` / `null.json` / `.json`，
-     也不把损坏内容当 200 直出。判定正则 `^\d+$`（平台 `dataVersion` 恒为十进制整数串）。
-   失败路径必须留 `console.error`（`latest_redirect_pointer_unreadable` / `latest_redirect_pointer_malformed`）。
+**此段仅为实现侧索引，判据以正本（E32）/ 契约正文（§1.5）为准。** 归属口径：302 是**读取出口的通用语义**，
+一条规则一份判据；数据集级只登记白名单成员，不写第二套判据。
+
+实现落点（供索引，不作判据）：`src/index.ts` 的 `maybeRedirectLatest` + `POINTER_CACHE_CONTROL`。
+
+**关于 `content-type`**：E32 的头白名单**允许** `content-type`（值只能取 `application/json`），
+但本实现是**空体 302**，因此**不输出 `content-type`**（也不会输出 `text/plain`）——即「302 允许不带 `content-type`」，
+验收端**不得**要求 302 必须带 MIME；`content-length` 同样不声明，GET 与 HEAD 同形（都是空体）。
