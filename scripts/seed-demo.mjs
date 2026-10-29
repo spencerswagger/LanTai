@@ -184,21 +184,53 @@ async function seedOne(slug) {
   return { slug, latest: version };
 }
 
-/** E28 自查：种完后立刻按文档示例地址逐个验证 200。 */
+/**
+ * `/{slug}/latest.json` 的**两种合法形态**（E32）：
+ *  - 未开白名单的数据集 → **200 指针文档**（含 dataVersion）；
+ *  - 白名单内（目前只有 test 的 `channel-preset-pack`）→ **302** 跳 `versions/{n}.json`。
+ * 老写法硬断言 200，一旦白名单覆盖到种子数据集就必红；这里两种都接受，
+ * 302 时再跟随一跳，确认目标是 `versions/{n}.json` 且真能取到体（非空、非 `undefined.json`）。
+ */
+async function verifyLatestPointer(path) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "GET",
+    headers: headers(),
+    redirect: "manual",
+  });
+  if (res.status === 200) {
+    const doc = await res.json().catch(() => null);
+    return [
+      `${path} → 200 指针（dataVersion=${doc?.dataVersion ?? "缺失"}）`,
+      Boolean(doc?.dataVersion),
+    ];
+  }
+  if (res.status === 302) {
+    const location = res.headers.get("location") || "";
+    const target = location.startsWith("http") ? location : `${BASE}${location}`;
+    const followed = await fetch(target, { method: "GET", headers: headers() });
+    const body = await followed.text();
+    const ok =
+      /\/versions\/[^/]+\.json$/.test(location) && followed.status === 200 && body.length > 2;
+    return [
+      `${path} → 302 跳 ${location || "(无 location)"}（跟随 ${followed.status} / ${body.length} B）`,
+      ok,
+    ];
+  }
+  return [`${path} → ${res.status}（既不是 200 指针也不是 302 跳转）`, false];
+}
+
+/** E28 自查：种完后立刻按文档示例地址逐个验证可达。 */
 async function verify(seeded) {
   const catalog = await api("/index.json");
   const slugs = (catalog?.datasets || []).map((d) => d.slug);
   const checks = [];
   for (const { slug, latest } of seeded) {
     checks.push([`/index.json 含 ${slug}`, slugs.includes(slug)]);
-    for (const path of [
-      `/${slug}/manifest.json`,
-      `/${slug}/latest.json`,
-      `/${slug}/versions/${latest}.json`,
-    ]) {
+    for (const path of [`/${slug}/manifest.json`, `/${slug}/versions/${latest}.json`]) {
       const res = await fetch(`${BASE}${path}`, { method: "GET", headers: headers() });
       checks.push([`${path} → 200`, res.status === 200]);
     }
+    checks.push(await verifyLatestPointer(`/${slug}/latest.json`));
   }
   // 文档里写死的示例版本号（E28：改种子不改文档）。
   for (const path of [

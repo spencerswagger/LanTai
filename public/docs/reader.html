@@ -36,7 +36,7 @@
               <tr><td><code>/index.json</code></td><td>平台数据目录：有哪些数据集、各自当前版本</td></tr>
               <tr><td><code>/search/index.json</code></td><td>搜索索引：数据集名称、字段与数据内容</td></tr>
               <tr><td><code>/{slug}/manifest.json</code></td><td>某数据集的清单：Schema 版本、全部数据版本与最新版</td></tr>
-              <tr><td><code>/{slug}/latest.json</code></td><td>指向该数据集最新的正式版数据</td></tr>
+              <tr><td><code>/{slug}/latest.json</code></td><td>指向该数据集最新的正式版数据（部分数据集会 302 跳到 <code>versions/{v}.json</code>）</td></tr>
               <tr><td><code>/{slug}/versions/{v}.json</code></td><td>某个固定版本的数据，发布后内容不再变化</td></tr>
               <tr><td><code>/schemas/{slug}/{v}.json</code></td><td>该数据集的字段定义（Schema）</td></tr>
             </tbody>
@@ -69,6 +69,11 @@ fetch("/demo-population/latest.json")
             <li>清单 <code>manifest.json</code> 的 <code>latest</code> 字段，指向当前最新的正式版本号。</li>
             <li>版本数据 <code>/versions/{v}.json</code> 一经发布就不再改动，可长期引用同一个网址。</li>
             <li>只想取「最新」时，先读 <code>latest.json</code>，再按其中的版本号取对应版本。</li>
+            <li>
+              有的数据集把 <code>latest.json</code> 配成 <strong>302 跳转</strong>，直接跳到包本体
+              <code>versions/{v}.json</code>；这类地址是「稳定入口」而不是数据本身，请按跳转后的地址取数，
+              不要把 <code>latest.json</code> 当作包解析。
+            </li>
           </ul>
           <p class="muted">
             <code>preview.json</code> 是<strong>非正式</strong>的预览数据，请勿作为数据来源。

@@ -89,3 +89,26 @@ A tests/vite-env.d.ts
 2. 顺手收紧 §3 提示的那条宽松断言。
 3. 复跑结果：红项属实现侧 → 回 Max；属旧口径断言 → 改 Hawk 分支。
 4. 本分支**等待合并评审**。按收工口径停在此处：**不 push**。
+---
+
+## 7. 契约追加项 **E32**（跳转响应的缓存语义）— PR #1 / Owl 必改项 2
+
+> 编号接 Ada 契约 `docs/contracts/public-read-egress.md` 现有序列（E1–E31 → **E32**）。
+> 该正本在当前仓库里是 **gitignore 的 `/docs/`**（属 Ada 的树，本分支不可写），
+> 故本节先落地在 PR 可评审的位置；**待 Ada 收编进正本**，文字以本节为准。
+
+**E32**　`/{slug}/latest.json` 命中 `LATEST_REDIRECT_SLUGS` 白名单时回 **302**，该响应
+**按「指针类」缓存**：`cache-control: public, max-age=60, must-revalidate`。
+
+1. 302 **不是错误响应**，因此**不得**套用「错误面一律 `no-store`」；也**不得**给 `immutable`
+   （否则「最新」会滞后一个版本周期）。
+2. 错误面（4xx / 5xx，含 `read_unavailable` / `internal_error`）**仍一律 `no-store`**，
+   与 302 的缓存语义互不覆盖。
+3. 302 的响应头白名单 = `location` / `cache-control` / `content-type`，不得出现任何 `x-lantai-*`；
+   `HEAD` 同 302 但**空体**。
+4. 读指针失败一律**不跳转**，按情形分开（细分见下，测试锚点 `latest-json-redirect.test.ts` ④/④′）：
+   - **存储不可用**（`bucket.get` 抛错）→ 退回 `serveR2Read`，给既有语义的 `read_unavailable` 500 + `no-store`；
+   - **指针不存在** → 退回 `serveR2Read` → 404 JSON + `no-store`；
+   - **指针存在但损坏**（非 JSON / 缺 `dataVersion` / `dataVersion` 非字符串）→ **404 JSON + `no-store`**，
+     绝不 302 到 `versions/undefined.json`，也不把损坏内容当 200 直出。
+   失败路径必须留 `console.error`（`latest_redirect_pointer_unreadable` / `latest_redirect_pointer_malformed`）。
