@@ -185,7 +185,7 @@ async function seedOne(slug) {
 }
 
 /**
- * `/{slug}/latest.json` 的**两种合法形态**（E32）：
+ * `/{slug}/latest.json` 的**两种合法形态**（契约 §1.5）：
  *  - 未开白名单的数据集 → **200 指针文档**（含 dataVersion）；
  *  - 白名单内（目前只有 test 的 `channel-preset-pack`）→ **302** 跳 `versions/{n}.json`。
  * 老写法硬断言 200，一旦白名单覆盖到种子数据集就必红；这里两种都接受，

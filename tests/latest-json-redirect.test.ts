@@ -79,7 +79,10 @@ describe("latest.json 302 跳转 · 白名单命中", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`/${SLUG}/versions/1.json`);
     expect(res.headers.get("cache-control")).toBe(POINTER_CACHE);
-    expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    // §1.5：302 一律空体、不带 MIME（§1 头白名单只允许 application/json，故不给 content-type）。
+    expect(res.headers.get("content-type")).toBeNull();
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(await res.text()).toBe("");
     expect(res.headers.get("allow")).toBeNull();
     assertNoDebugHeaders(res);
     assertCleanLocation(res);
