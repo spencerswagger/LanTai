@@ -94,6 +94,8 @@ A tests/vite-env.d.ts
 ## 7. 契约追加项 **E32**（跳转响应的缓存语义）— PR #1 / Owl 必改项 2
 
 > 编号接 Ada 契约 `docs/contracts/public-read-egress.md` 现有序列（E1–E31 → **E32**）。
+> 注意：Ada 契约 §0 写「本文不新造 AC 号」，故 **E32 是「实现层追加约定」，不是 Vera 的 AC 号**；
+> Ada 若要并回 AC 清单，按她的编号规则重编即可，语义以本节为准。
 > 该正本在当前仓库里是 **gitignore 的 `/docs/`**（属 Ada 的树，本分支不可写），
 > 故本节先落地在 PR 可评审的位置；**待 Ada 收编进正本**，文字以本节为准。
 
