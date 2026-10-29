@@ -40,7 +40,8 @@ interface ReadResult {
 }
 
 /** 读取出口响应头白名单：只允许 content-type / cache-control / etag
-    （以及边缘加的 cf-*；405 按契约另带 `allow: GET, HEAD`）。 */
+    （以及边缘加的 cf-*；405 按契约另带 `allow: GET, HEAD`；`/{slug}/latest.json`
+    的 302 指针跳转按 PR #1 契约另带 `location`）。 */
 function assertHeaderWhitelist(res: Response): void {
   for (const name of res.headers.keys()) {
     const lower = name.toLowerCase();
@@ -50,6 +51,7 @@ function assertHeaderWhitelist(res: Response): void {
       "cache-control",
       "etag",
       "allow",
+      "location",
       "cf-cache-status",
       "cf-ray",
     ]).toContain(lower);
