@@ -234,7 +234,7 @@ const POINTER_CACHE_CONTROL = "public, max-age=60, must-revalidate";
  *  - **存储不可用**（`bucket.get` 抛错）→ 返回 null 交回 `serveR2Read`，由它给既有语义的
  *    `read_unavailable` 500 + `no-store`（老行为，不是这里新造的 500）；
  *  - **指针不存在** → 返回 null 交回 `serveR2Read` → 404 JSON + `no-store`；
- *  - **指针对象存在但损坏**（非 JSON / 缺 `dataVersion`）→ 直接 404 JSON + `no-store`：
+ *  - **指针对象存在但损坏**（非 JSON / 缺 `dataVersion` / 版本号非「非空纯数字」）→ 直接 404 JSON + `no-store`：
  *    既不跳 `versions/undefined.json`，也不把损坏内容当 200 直出给消费方。
  */
 async function maybeRedirectLatest(
@@ -264,12 +264,16 @@ async function maybeRedirectLatest(
   try {
     pointer = JSON.parse(await object.text()) as { dataVersion?: unknown };
   } catch (error) {
-    console.error("latest_redirect_pointer_malformed", slug, error);
+    console.error("latest_redirect_pointer_malformed", slug, "not_json", error);
     pointer = null;
   }
-  const dataVersion = typeof pointer?.dataVersion === "string" ? pointer.dataVersion.trim() : "";
-  if (dataVersion === "") {
-    console.error("latest_redirect_pointer_malformed", slug, pointer?.dataVersion);
+  /* 版本号必须是非空、纯数字的标量（平台的 dataVersion 恒为十进制整数串）：
+     否则 `undefined` / `null` / `""` / `1.2` / `../x` 会被拼成 `versions/undefined.json`、
+     `null.json`、`.json` 这类路径 —— 一律 404，绝不跳转。 */
+  const raw = pointer?.dataVersion;
+  const dataVersion = typeof raw === "string" ? raw.trim() : "";
+  if (!/^\d+$/.test(dataVersion)) {
+    console.error("latest_redirect_pointer_malformed", slug, "bad_dataVersion", raw);
     return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
   }
 

@@ -111,6 +111,7 @@ A tests/vite-env.d.ts
 4. 读指针失败一律**不跳转**，按情形分开（细分见下，测试锚点 `latest-json-redirect.test.ts` ④/④′）：
    - **存储不可用**（`bucket.get` 抛错）→ 退回 `serveR2Read`，给既有语义的 `read_unavailable` 500 + `no-store`；
    - **指针不存在** → 退回 `serveR2Read` → 404 JSON + `no-store`；
-   - **指针存在但损坏**（非 JSON / 缺 `dataVersion` / `dataVersion` 非字符串）→ **404 JSON + `no-store`**，
-     绝不 302 到 `versions/undefined.json`，也不把损坏内容当 200 直出。
+   - **指针存在但损坏**（非 JSON / 缺 `dataVersion` / `dataVersion` 不是**非空纯数字**串）→
+     **404 JSON + `no-store`**，绝不 302 到 `versions/undefined.json` / `null.json` / `.json`，
+     也不把损坏内容当 200 直出。判定正则 `^\d+$`（平台 `dataVersion` 恒为十进制整数串）。
    失败路径必须留 `console.error`（`latest_redirect_pointer_unreadable` / `latest_redirect_pointer_malformed`）。
