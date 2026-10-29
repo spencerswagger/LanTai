@@ -72,7 +72,12 @@
   "env": {
     "test": {
       "name": "lantai-test",
+      // 每次 deploy 都会把 workers.dev 裸域重新打开（wrangler 默认行为，会打警告）；
+      // 这里显式关掉，避免部署后裸域绕过边缘 Access 暴露后台。
+      "workers_dev": false,
       "vars": {
+        // `/{slug}/latest.json` 302 跳包本体的白名单（见 src/index.ts maybeRedirectLatest）
+        "LATEST_REDIRECT_SLUGS": "channel-preset-pack",
         "ENVIRONMENT": "test",
         "SKIP_ACCESS_DEV": "true",
         "TURNSTILE_SITE_KEY": "",

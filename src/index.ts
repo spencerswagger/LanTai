@@ -6,6 +6,7 @@ import { errorBody } from "./lib/response";
 import { accessGuard } from "./middleware/access";
 import { handleScheduled } from "./ops/cron";
 import { PROTECTED_PAGES, PROTECTED_ROUTES } from "./protected-pages";
+import { readLatestPointer } from "./publish/pointer";
 import {
   cacheControlForKey,
   isJsonGuardPath,
@@ -143,6 +144,8 @@ app.all("*", async (c, next) => {
         { allow: "GET, HEAD" },
       );
     }
+    const redirect = await maybeRedirectLatest(c.env, key, method);
+    if (redirect) return redirect;
     return serveR2Read(c.env.BUCKET, key, method);
   }
 
@@ -201,6 +204,42 @@ function readEgressResponse(
       "content-type": JSON_CONTENT_TYPE,
       "cache-control": cacheControl,
       ...extraHeaders,
+    },
+  });
+}
+
+/**
+ * `/{slug}/latest.json` → **302** 到包本体 `/{slug}/versions/{n}.json`。
+ *
+ * 为什么需要：latest.json 是「指针文档」而不是包；消费方若按 200 解析就会拿到
+ * 一个没有 provider 的清单（静默空包，随后把已有协议全部标 STALE）。302 让「稳定 URL」
+ * 与「包本体」两件事同时成立，且新版本发布后 Location 自动跟随指针里的 dataVersion。
+ *
+ * 作用域：只对 `LATEST_REDIRECT_SLUGS` 白名单内的 slug 生效（默认空 = 平台行为不变，
+ * 因为 `public/dataset.html` 等页面仍按指针语义解析其他数据集的 latest.json）。
+ * 缓存头固定 60s + must-revalidate：**绝不能 immutable**，否则「最新」会滞后。
+ */
+async function maybeRedirectLatest(
+  env: Env,
+  key: string,
+  method: string,
+): Promise<Response | null> {
+  if (!key.endsWith("/latest.json")) return null;
+  const slug = key.slice(0, -"/latest.json".length);
+  const allow = (env.LATEST_REDIRECT_SLUGS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+  if (!allow.includes(slug)) return null;
+
+  const pointer = await readLatestPointer(env.BUCKET, slug);
+  if (!pointer) return null;
+  return new Response(method === "HEAD" ? null : "该地址是指针，已 302 跳转到最新包本体。\n", {
+    status: 302,
+    headers: {
+      location: `/${slug}/versions/${pointer.dataVersion}.json`,
+      "cache-control": "public, max-age=60, must-revalidate",
+      "content-type": "text/plain; charset=utf-8",
     },
   });
 }
