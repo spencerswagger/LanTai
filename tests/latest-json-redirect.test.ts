@@ -150,23 +150,59 @@ describe("latest.json 302 跳转 · 指针缺失 / 损坏（不得跳 undefined.
     expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe("not_found");
   });
 
-  it("④′ 指针对象损坏（非 JSON / 缺 dataVersion）→ 404，绝不 302 到 undefined.json", async () => {
-    await publish(SLUG);
+  /* 损坏指针的六个口径（E32 d / §1.5）：非 JSON、缺字段、null、空串、非数字、路径穿越。
+     实现侧口径是 `dataVersion` 必须匹配 `^\d+$` 才给 302，其余一律 404 —— 每一个都必须有断言守着，
+     否则实现回退成「拿字符串硬拼 location」时只会静默产出 `versions/.json` / `versions/../2.json`。 */
+  const CORRUPT_POINTERS: readonly (readonly [string, string])[] = [
+    ["截断 JSON", '{"dataset":"channel-preset-pack","dataVer'],
+    ["缺 dataVersion", '{"dataset":"channel-preset-pack"}'],
+    ["dataVersion=null", '{"dataVersion":null}'],
+    ["dataVersion 空串", '{"dataVersion":""}'],
+    ["dataVersion 非数字 abc", '{"dataVersion":"abc"}'],
+    ["dataVersion 路径穿越 ../2", '{"dataVersion":"../2"}'],
+  ];
 
-    for (const corrupt of [
-      '{"dataset":"chan',
-      '{"dataset":"channel-preset-pack"}',
-      '{"dataVersion":null}',
-    ]) {
-      await env.BUCKET.put(`${SLUG}/latest.json`, corrupt);
+  for (const [label, raw] of CORRUPT_POINTERS) {
+    it(`④′ 指针损坏（${label}）→ 404 + no-store、无 location、无 500，不拼出任何 versions 路径`, async () => {
+      await publish(SLUG);
+      await env.BUCKET.put(`${SLUG}/latest.json`, raw);
 
       const res = await callApp(`/${SLUG}/latest.json`, undefined, ON);
-      await res.text();
+      const text = await res.text();
 
-      expect(res.status, `损坏指针 ${corrupt} 必须 404（不是 302/500）`).toBe(404);
-      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(res.status, `${label} 必须 404（不是 302 / 500）`).toBe(404);
+      expect(res.headers.get("cache-control"), label).toBe("no-store");
+      // 关键：不许跳转，也就不会出现 `versions/undefined.json` / `versions/.json` / `versions/../2.json`。
+      expect(res.headers.get("location"), `${label} 不得产生 location`).toBeNull();
       assertCleanLocation(res);
-    }
+      expect(text, `${label} 的 body 不得含拼接路径`).not.toContain("versions/");
+      expect((JSON.parse(text) as { error: { code: string } }).error.code, label).toBe("not_found");
+    });
+  }
+
+  it("④″ 白名单命中但存储抛错 → 500 read_unavailable + no-store，无 location（不退化成 404 / 302）", async () => {
+    await publish(SLUG);
+
+    /* 注入点用 `callApp` 的 env 覆盖（`tests/helpers.ts` 已支持），不需要实现侧开缝：
+       白名单**已开**（ON）+ `BUCKET.get` 抛错，才真正落在 `maybeRedirectLatest` 的 catch 分支上
+       ——它会 `return null` 交回 `serveR2Read`，由后者给老语义的 500。 */
+    const broken = {
+      get: () => {
+        throw new Error("r2 down");
+      },
+      head: () => {
+        throw new Error("r2 down");
+      },
+    } as unknown as R2Bucket;
+
+    const res = await callApp(`/${SLUG}/latest.json`, undefined, { ...ON, BUCKET: broken });
+    const text = await res.text();
+
+    expect(res.status, "存储故障不得升级成 404 / 302").toBe(500);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("location")).toBeNull();
+    assertCleanLocation(res);
+    expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe("read_unavailable");
   });
 });
 
