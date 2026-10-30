@@ -20,6 +20,8 @@
  *   --env             部署环境，**只允许 test**。
  *   --execute         真正写入；缺省只打印计划（dry-run）。
  *   --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS（默认会写）。
+ *   --no-deploy             登记白名单后不自动部署（默认会部署：vars 是部署期注入，不部署不生效）。
+ *   --allow-non-302         302 自检未通过时只告警、不判失败（默认判失败）。
  *
  * 安全边界（fail closed，任一不满足立即退出非 0）：
  *   1. `--env` 只接受 `test`；`preprod` / `production` 显式拒绝。
@@ -61,9 +63,18 @@ export function parseArgs(argv) {
     "--env",
     "--execute",
     "--no-register-redirect",
+    "--no-deploy",
+    "--allow-non-302",
     "--help",
   ]);
-  const args = { execute: false, env: "test", schemaVersion: "1.0.0", registerRedirect: true };
+  const args = {
+    execute: false,
+    env: "test",
+    schemaVersion: "1.0.0",
+    registerRedirect: true,
+    deploy: true,
+    allowNon302: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!known.has(token)) fail(`未知参数：${token}`);
@@ -73,6 +84,14 @@ export function parseArgs(argv) {
     }
     if (token === "--no-register-redirect") {
       args.registerRedirect = false;
+      continue;
+    }
+    if (token === "--no-deploy") {
+      args.deploy = false;
+      continue;
+    }
+    if (token === "--allow-non-302") {
+      args.allowNon302 = true;
       continue;
     }
     if (token === "--help") {
@@ -107,6 +126,8 @@ function printHelp() {
       "  --env             部署环境，只允许 test",
       "  --execute         真正写入（缺省 dry-run）",
       "  --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS",
+      "  --no-deploy             登记后不自动部署（vars 是部署期注入，不部署不生效）",
+      "  --allow-non-302         302 自检未通过时只告警不判失败",
     ].join("\n"),
   );
 }
@@ -149,7 +170,13 @@ function wranglerTargets(envName) {
   const bucket = section.r2_buckets?.[0];
   if (!database?.database_name) fail(`env.${envName} 缺 d1_databases[0].database_name`);
   if (!bucket?.bucket_name) fail(`env.${envName} 缺 r2_buckets[0].bucket_name`);
-  return { worker: section.name, database: database.database_name, bucket: bucket.bucket_name };
+  return {
+    worker: section.name,
+    database: database.database_name,
+    bucket: bucket.bucket_name,
+    /* 未显式关掉 workers.dev 时，每次 deploy 都会把裸域重新打开（wrangler 默认行为）。 */
+    workersDevDisabled: section.workers_dev === false,
+  };
 }
 
 /** 去掉 jsonc 的注释与尾逗号（wrangler.jsonc 允许注释，JSON.parse 不允许）。 */
@@ -389,10 +416,16 @@ async function main() {
       `7  publish    r2: ${searchIndexKey}、search/index.json`,
       `8  publish    d1: data_version + dataset.current_data_version + audit_log`,
       `9  redirect   写 wrangler.jsonc 的 ${args.env}.vars.LATEST_REDIRECT_SLUGS ← ${args.slug}（幂等）`,
+      args.deploy
+        ? `10 deploy     wrangler deploy ${envFlag.join(" ")}（vars 是部署期注入，必须部署才生效）`
+        : "10 deploy     跳过（--no-deploy）",
+      `11 verify     /api/health 复核 environment=${args.env}；HEAD /${args.slug}/latest.json 期望 302 → versions/1.json`,
     ]) {
       console.log(`  ${line}`);
     }
-    console.log("\n[dry-run] 未写入任何东西；加 --execute 才执行。");
+    console.log(
+      `\n[dry-run] 未写入任何东西，**也不会部署**（部署只在 --execute 时发生）；加 --execute 才执行。${args.deploy ? "" : "（--no-deploy：执行时也不会部署）"}`,
+    );
     return 0;
   }
 
@@ -575,7 +608,45 @@ async function main() {
       );
     }
   } else {
-    console.log("[9/9] redirect 白名单按 --no-register-redirect 跳过");
+    console.log("[9/11] redirect 白名单按 --no-register-redirect 跳过");
+  }
+
+  // 10) 部署（路线 A：vars 是部署期注入，改了配置不部署 = 线上读不到）
+  if (args.deploy) {
+    if (!targets.workersDevDisabled) {
+      console.error(
+        `  ⚠ env.${args.env} 未设置 workers_dev: false：本次 deploy 会把该环境的 workers.dev 裸域重新打开（wrangler 默认行为）`,
+      );
+    }
+    const deployOut = await runWrangler(["deploy", ...envFlag], "deploy");
+    const version = /Current Version ID:\s*([0-9a-f-]+)/i.exec(deployOut)?.[1] ?? "unknown";
+    console.log(`[10/11] deploy ok（version ${version}）`);
+  } else {
+    console.log("[10/11] deploy 按 --no-deploy 跳过（白名单改动**尚未生效**）");
+  }
+
+  // 11) 复核环境 + 302 生效自检
+  const healthAfter = await fetchJson(`${args.baseUrl}/api/health`, "health(after)");
+  if (healthAfter?.environment !== args.env) {
+    fail(
+      `部署后 /api/health 自报 environment=${JSON.stringify(healthAfter?.environment)}，与 --env ${args.env} 不一致；请人工核对`,
+      1,
+    );
+  }
+  const redirectProbe = await fetch(`${args.baseUrl}/${args.slug}/latest.json`, {
+    method: "HEAD",
+    redirect: "manual",
+  });
+  const location = redirectProbe.headers.get("location") ?? "";
+  const expectedLocation = `/${args.slug}/versions/1.json`;
+  const ok302 = redirectProbe.status === 302 && location.endsWith(expectedLocation);
+  console.log(
+    `[11/11] 302 自检：HEAD /${args.slug}/latest.json → ${redirectProbe.status} location=${location || "(空)"}`,
+  );
+  if (!ok302) {
+    const message = `302 未生效：期望 302 + Location ${expectedLocation}，实际 ${redirectProbe.status} + ${location || "(空)"}。常见原因：读出口的 302 逻辑未合入/未部署（PR #1），或该 slug 未进白名单`;
+    if (args.allowNon302) console.error(`  ⚠ ${message}`);
+    else fail(message, 1);
   }
 
   // 收尾：公开读出口自检（不带凭据）
