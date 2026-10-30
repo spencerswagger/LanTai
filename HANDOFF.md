@@ -22,7 +22,7 @@
 
 实现分布（模块级）：
 - `src/r2/keys.ts` —— 归一（只剥前导 `/`）、家族匹配、`.json` 守卫、R2 键长预判。
-- `src/index.ts` —— `app.all("*")` 消费顺序：读取族 → `.json` 守卫 → 非 GET/HEAD → 404；头白名单（content-type / cache-control / etag）；一切非 2xx 一律 `no-store`；错误 message 固定短文本。
+- `src/index.ts` —— `app.all("*")` 消费顺序：读取族 → `.json` 守卫 → 非 GET/HEAD → 404；头白名单（content-type / cache-control / etag）；**4xx/5xx 一律 `no-store`**（3xx 是唯一例外，见 §1.5 的 302 语义）；错误 message 固定短文本。
 - `src/publish/{publish,rollback}.ts`、`src/schema/freeze.ts` —— 4 个 manifest 写入点的 preview 取值统一。
 - `scripts/seed-demo.mjs` —— T6 种子护栏。
 - `public/{index.html,styles.css}` —— 读取出口页面对齐。
@@ -89,3 +89,22 @@ A tests/vite-env.d.ts
 2. 顺手收紧 §3 提示的那条宽松断言。
 3. 复跑结果：红项属实现侧 → 回 Max；属旧口径断言 → 改 Hawk 分支。
 4. 本分支**等待合并评审**。按收工口径停在此处：**不 push**。
+---
+
+## 7. `/{slug}/latest.json` 302 —— 实现侧索引（判据以正本为准）
+
+本节**只是指针**，不再承载任何正文。权威口径分两处：
+
+| 归属 | 位置 | 内容 |
+|---|---|---|
+| 验收判据（正式编号 **E32**） | Vera《公开读取出口 · 读者侧验收清单》`prod/read-egress-acceptance` @ **`dc77fce`**（正本 E1–E32） | E32 五子条：触发面 / 只允许 302 且 `n === manifest.latest` / 302 属指针缓存、错误面 `no-store`，两套互不覆盖 / 坏指针一律不跳 / HEAD 同 302 空体；非 GET·HEAD 405 |
+| 契约正文（**§1.5**） | Ada `docs/contracts/public-read-egress.md` @ `arch/read-path-contract` | §1.5 写全 302 语义；§2 只留一行白名单成员登记（现为 `channel-preset-pack`） |
+
+**此段仅为实现侧索引，判据以正本（E32）/ 契约正文（§1.5）为准。** 归属口径：302 是**读取出口的通用语义**，
+一条规则一份判据；数据集级只登记白名单成员，不写第二套判据。
+
+实现落点（供索引，不作判据）：`src/index.ts` 的 `maybeRedirectLatest` + `POINTER_CACHE_CONTROL`。
+
+**关于 `content-type`**：E32 的头白名单**允许** `content-type`（值只能取 `application/json`），
+但本实现是**空体 302**，因此**不输出 `content-type`**（也不会输出 `text/plain`）——即「302 允许不带 `content-type`」，
+验收端**不得**要求 302 必须带 MIME；`content-length` 同样不声明，GET 与 HEAD 同形（都是空体）。

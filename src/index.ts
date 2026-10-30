@@ -9,6 +9,7 @@ import { PROTECTED_PAGES, PROTECTED_ROUTES } from "./protected-pages";
 import {
   cacheControlForKey,
   isJsonGuardPath,
+  latestPointerKey,
   PLATFORM_INDEX_KEY,
   readEgressKeyForPath,
   SEARCH_INDEX_KEY,
@@ -20,7 +21,8 @@ import { submissionsApi } from "./routes/submissions";
 const app = new Hono<AppEnv>();
 
 app.onError((err, c) => {
-  /* 契约 §1.3 / E19：一切非 2xx 一律 no-store，故障不得被 CDN 缓存。 */
+  /* 契约 §1.3 / E19 + **§1.5**：错误响应一律 no-store（故障不得被 CDN 缓存）。
+     跳转 302 不是错误 —— 它按指针类语义缓存，见下方 `POINTER_CACHE_CONTROL`。 */
   if (err instanceof AppError) {
     return c.json(errorBody(err.code, err.message, err.details), err.status as never, {
       "cache-control": "no-store",
@@ -126,7 +128,12 @@ function escapeXml(text: string): string {
  *  - 不引入自持缓存（不用 Cache API / KV 缓存读取响应），否则 E17「发布后立即可见」不成立（E18）；
  *  - v1 不做条件请求（不做 304、忽略 query、不协商 Accept），保证 E12 / E18 的字节稳定性；
  *  - 响应头白名单 = content-type / cache-control / etag，禁止任何 `x-lantai-*`（E29）；
- *  - **一切非 2xx 一律 `no-store`**，且 404 永不含 `immutable`（E16 / E19）。
+ *  - **错误响应（4xx / 5xx）一律 `no-store`**，且 404 永不含 `immutable`（E16 / E19）；
+ *  - **§1.5（指针类响应的 302 语义）**：`/{slug}/latest.json` 命中白名单时的 **302 不是错误**，
+ *    它按「指针类」缓存 —— 固定 `public, max-age=60, must-revalidate`，**绝不** `immutable`、
+ *    也**不**加 `no-store`；错误面（4xx / 5xx）仍走上一行的 `no-store`，两者不互相覆盖；
+ *    302 **不带正文**（空体，与 HEAD 一致）：§1 的响应头白名单只允许 `application/json`，
+ *    带 `text/plain` 正文会与「恒 application/json」相冲突，故干脆不给 MIME。
  */
 app.all("*", async (c, next) => {
   const pathname = new URL(c.req.url).pathname;
@@ -143,6 +150,8 @@ app.all("*", async (c, next) => {
         { allow: "GET, HEAD" },
       );
     }
+    const redirect = await maybeRedirectLatest(c.env, key);
+    if (redirect) return redirect;
     return serveR2Read(c.env.BUCKET, key, method);
   }
 
@@ -201,6 +210,79 @@ function readEgressResponse(
       "content-type": JSON_CONTENT_TYPE,
       "cache-control": cacheControl,
       ...extraHeaders,
+    },
+  });
+}
+
+/**
+ * 指针类响应的缓存语义（契约 **§1.5**）：60 秒 + `must-revalidate`。
+ * 302 是「跳转」不是「错误」，所以既不 `immutable`（否则「最新」会滞后）也不 `no-store`
+ * （否则每跳一次都要回源，指针失去缓存价值）；错误面（4xx / 5xx）仍一律 `no-store`。
+ */
+const POINTER_CACHE_CONTROL = "public, max-age=60, must-revalidate";
+
+/**
+ * `/{slug}/latest.json` → **302** 到包本体 `/{slug}/versions/{n}.json`。
+ *
+ * 为什么需要：latest.json 是「指针文档」而不是包；消费方若按 200 解析就会拿到
+ * 一个没有 provider 的清单（静默空包，随后把已有协议全部标 STALE）。302 让「稳定 URL」
+ * 与「包本体」两件事同时成立，且新版本发布后 Location 自动跟随指针里的 dataVersion。
+ *
+ * 作用域：只对 `LATEST_REDIRECT_SLUGS` 白名单内的 slug 生效（默认空 = 平台行为不变，
+ * 因为 `public/dataset.html` 等页面仍按指针语义解析其他数据集的 latest.json）。
+ * 缓存头见 `POINTER_CACHE_CONTROL`（§1.5）：**绝不能 immutable**，否则「最新」会滞后。
+ *
+ * 失败面（Owl 必改项 1，§1.5 的指针不可读/损坏处置）—— 三种情形分开处理，都不许把「读取不可用」升级成无码 500：
+ *  - **存储不可用**（`bucket.get` 抛错）→ 返回 null 交回 `serveR2Read`，由它给既有语义的
+ *    `read_unavailable` 500 + `no-store`（老行为，不是这里新造的 500）；
+ *  - **指针不存在** → 返回 null 交回 `serveR2Read` → 404 JSON + `no-store`；
+ *  - **指针对象存在但损坏**（非 JSON / 缺 `dataVersion` / 版本号非「非空纯数字」）→ 直接 404 JSON + `no-store`：
+ *    既不跳 `versions/undefined.json`，也不把损坏内容当 200 直出给消费方。
+ */
+async function maybeRedirectLatest(env: Env, key: string): Promise<Response | null> {
+  if (!key.endsWith("/latest.json")) return null;
+  const slug = key.slice(0, -"/latest.json".length);
+  const allow = (env.LATEST_REDIRECT_SLUGS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+  if (!allow.includes(slug)) return null;
+
+  let object: R2ObjectBody | null;
+  try {
+    object = await env.BUCKET.get(latestPointerKey(slug));
+  } catch (error) {
+    /* 存储故障：退回直出路径，由 serveR2Read 统一给 read_unavailable（E19 口径不变）。 */
+    console.error("latest_redirect_pointer_unreadable", slug, error);
+    return null;
+  }
+  if (!object) return null;
+
+  let pointer: { dataVersion?: unknown } | null = null;
+  try {
+    pointer = JSON.parse(await object.text()) as { dataVersion?: unknown };
+  } catch (error) {
+    console.error("latest_redirect_pointer_malformed", slug, "not_json", error);
+    pointer = null;
+  }
+  /* 版本号必须是非空、纯数字的标量（平台的 dataVersion 恒为十进制整数串）：
+     否则 `undefined` / `null` / `""` / `1.2` / `../x` 会被拼成 `versions/undefined.json`、
+     `null.json`、`.json` 这类路径 —— 一律 404，绝不跳转。 */
+  const raw = pointer?.dataVersion;
+  const dataVersion = typeof raw === "string" ? raw.trim() : "";
+  if (!/^\d+$/.test(dataVersion)) {
+    console.error("latest_redirect_pointer_malformed", slug, "bad_dataVersion", raw);
+    return readEgressResponse(errorBody("not_found", NOT_FOUND_MESSAGE), 404, "no-store");
+  }
+
+  /* 302 一律空体（GET 与 HEAD 同形、都不声明 Content-Length）：契约 §1 的响应头白名单只允许
+     `application/json; charset=utf-8`，而 302 的「正文」只是给人看的跳转提示，带 `text/plain`
+     会与 §1.4 / E31 第 4 项「恒 application/json」冲突 —— 干脆不带正文、不带 MIME。 */
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: `/${slug}/versions/${dataVersion}.json`,
+      "cache-control": POINTER_CACHE_CONTROL,
     },
   });
 }
