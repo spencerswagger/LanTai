@@ -38,6 +38,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isMissingObjectError, upsertCatalog, upsertSearchIndex } from "./lib/index-merge.mjs";
 import { readRedirectSlugs, registerRedirectSlug } from "./lib/wrangler-config.mjs";
 
 const ALLOWED_ENVS = ["test"];
@@ -285,17 +286,35 @@ async function fetchJson(url, label) {
 
 /* ------------------------------------------------------------- R2 / D1 */
 
-async function r2Get(bucket, key) {
+/**
+ * 读取 R2 里的 JSON，**区分「对象不存在」与「读取失败」**（Owl P1-1）：
+ * - 不存在 → `{ found: false, value: null }`（调用方可以按空索引继续）；
+ * - 其他任何失败（鉴权 / 网络 / 5xx / JSON 解析）→ **抛错中止**，
+ *   绝不 return null —— 否则一次抖动就会把平台索引覆盖成「只剩本数据集」。
+ */
+async function readR2Json(bucket, key) {
   const file = join(mkdtempSync(join(tmpdir(), "publish-")), "obj.json");
   try {
     await runWrangler(
       ["r2", "object", "get", `${bucket}/${key}`, "--remote", "--file", file],
       `r2 get ${key}`,
     );
-    return JSON.parse(readFileSync(file, "utf8"));
-  } catch {
-    return null;
+  } catch (error) {
+    const detail = String(error.message || error);
+    if (isMissingObjectError(detail)) return { found: false, value: null };
+    throw new Error(
+      `读取 ${key} 失败（不是「对象不存在」），已中止以免覆盖平台索引：${detail.slice(0, 300)}`,
+    );
   }
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `解析 ${key} 失败，已中止以免覆盖平台索引：${String(error.message || error).slice(0, 200)}`,
+    );
+  }
+  return { found: true, value: parsed };
 }
 
 async function r2Put(bucket, key, body, cacheControl, envFlag) {
@@ -438,7 +457,7 @@ async function main() {
       1,
     );
   }
-  console.log(`[1/9] health ok（environment=${reported}）`);
+  console.log(`[1/11] health ok（environment=${reported}）`);
 
   // 2) 已存在则拒绝，绝不覆盖
   const existing = await d1Query(
@@ -466,7 +485,7 @@ async function main() {
     envFlag,
     "register",
   );
-  console.log("[2/9] register ok（dataset + schema_version draft + audit_log）");
+  console.log("[2/11] register ok（dataset + schema_version draft + audit_log）");
 
   // 3) freeze
   await d1Exec(
@@ -480,26 +499,26 @@ async function main() {
     "freeze(d1)",
   );
   await r2Put(targets.bucket, schemaKey, JSON.stringify(schemaDoc), IMMUTABLE, envFlag);
-  console.log(`[3/9] freeze ok（schema_version=frozen，r2 ${schemaKey}）`);
+  console.log(`[3/11] freeze ok（schema_version=frozen，r2 ${schemaKey}）`);
 
   // 4) manifest + catalog（freeze 即入目录，hasData=false）
-  const catalog = (await r2Get(targets.bucket, "index.json")) || { generatedAt: "", datasets: [] };
-  const entries = (catalog.datasets || []).filter((item) => item.slug !== args.slug);
-  entries.push({
+  const catalogBefore = await readR2Json(targets.bucket, "index.json");
+  const catalogEntry = {
     slug: args.slug,
     title,
     currentSchemaVersion: args.schemaVersion,
     currentDataVersion: null,
     hasData: false,
     updatedAt: now,
-  });
-  entries.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
-  await r2Put(
-    targets.bucket,
-    "index.json",
-    JSON.stringify({ generatedAt: now, datasets: entries }),
-    INDEX,
-    envFlag,
+  };
+  const catalogAfterFreeze = upsertCatalog(
+    catalogBefore.found ? catalogBefore.value : null,
+    catalogEntry,
+    now,
+  );
+  await r2Put(targets.bucket, "index.json", JSON.stringify(catalogAfterFreeze), INDEX, envFlag);
+  console.log(
+    `[4/11] catalog 合并 ok（写前 ${catalogBefore.found ? (catalogBefore.value?.datasets?.length ?? 0) : 0} 个数据集 → 写后 ${catalogAfterFreeze.datasets.length} 个，hasData=false）`,
   );
   const manifest = {
     slug: args.slug,
@@ -515,7 +534,7 @@ async function main() {
 
   // 5) 快照（不可变）
   await r2Put(targets.bucket, snapshotKey, snapshotBody, IMMUTABLE, envFlag);
-  console.log(`[5/9] snapshot ok（${snapshotKey}，${snapshotBody.length} B）`);
+  console.log(`[5/11] snapshot ok（${snapshotKey}，${snapshotBody.length} B）`);
 
   // 6) latest 指针（内含 schemaVersion）
   await r2Put(
@@ -531,7 +550,7 @@ async function main() {
     POINTER,
     envFlag,
   );
-  console.log(`[6/9] latest 指针 ok（schemaVersion=${args.schemaVersion}）`);
+  console.log(`[6/11] latest 指针 ok（schemaVersion=${args.schemaVersion}）`);
 
   // 7) 搜索索引 + manifest 复写（latest 已就绪）
   const published = {
@@ -555,26 +574,23 @@ async function main() {
     INDEX,
     envFlag,
   );
-  const global = (await r2Get(targets.bucket, "search/index.json")) || {
-    generatedAt: "",
-    datasets: [],
-  };
-  const docs = (global.datasets || []).filter((doc) => doc.slug !== args.slug);
-  docs.push({
+  const searchBefore = await readR2Json(targets.bucket, "search/index.json");
+  const searchDoc = {
     slug: args.slug,
     title,
     schemaVersion: args.schemaVersion,
     dataVersion: "1",
     fields: [],
-  });
-  await r2Put(
-    targets.bucket,
-    "search/index.json",
-    JSON.stringify({ generatedAt: now, datasets: docs }),
-    INDEX,
-    envFlag,
+  };
+  const searchAfter = upsertSearchIndex(
+    searchBefore.found ? searchBefore.value : null,
+    searchDoc,
+    now,
   );
-  console.log("[7/9] search-index + manifest 复写 ok");
+  await r2Put(targets.bucket, "search/index.json", JSON.stringify(searchAfter), INDEX, envFlag);
+  console.log(
+    `[7/11] search/index.json 合并 ok（写前 ${searchBefore.found ? (searchBefore.value?.datasets?.length ?? 0) : 0} 条 → 写后 ${searchAfter.datasets.length} 条）`,
+  );
 
   // 8) publish 落库
   await d1Exec(
@@ -587,7 +603,17 @@ async function main() {
     envFlag,
     "publish(d1)",
   );
-  console.log("[8/9] publish ok（data_version=1）");
+  // 8.5) 平台目录回写：hasData=true + currentDataVersion（对齐 src/publish/publish.ts 的行为，Owl P1-2）
+  const catalogBeforePublish = await readR2Json(targets.bucket, "index.json");
+  const catalogAfterPublish = upsertCatalog(
+    catalogBeforePublish.found ? catalogBeforePublish.value : null,
+    { ...catalogEntry, currentDataVersion: "1", hasData: true, updatedAt: now },
+    now,
+  );
+  await r2Put(targets.bucket, "index.json", JSON.stringify(catalogAfterPublish), INDEX, envFlag);
+  console.log(
+    `[8/11] publish ok（data_version=1）+ catalog 回写 ok（slug=${args.slug} hasData=true currentDataVersion=1，共 ${catalogAfterPublish.datasets.length} 个数据集）`,
+  );
 
   // 9) 登记 latest.json 302 白名单（幂等；只改这一行，不重排整个文件）
   if (args.registerRedirect) {
