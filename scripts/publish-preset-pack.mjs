@@ -19,6 +19,7 @@
  *   --base-url        目标站点（必填，不内置默认值，避免误打生产）。
  *   --env             部署环境，**只允许 test**。
  *   --execute         真正写入；缺省只打印计划（dry-run）。
+ *   --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS（默认会写）。
  *
  * 安全边界（fail closed，任一不满足立即退出非 0）：
  *   1. `--env` 只接受 `test`；`preprod` / `production` 显式拒绝。
@@ -34,6 +35,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { readRedirectSlugs, registerRedirectSlug } from "./lib/wrangler-config.mjs";
 
 const ALLOWED_ENVS = ["test"];
 const RETRY_DELAYS_MS = [5000, 20000, 60000];
@@ -47,7 +50,7 @@ const CONTENT_TYPE = "application/json; charset=utf-8";
 
 /* ------------------------------------------------------------------ args */
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const known = new Set([
     "--pack",
     "--slug",
@@ -57,14 +60,19 @@ function parseArgs(argv) {
     "--base-url",
     "--env",
     "--execute",
+    "--no-register-redirect",
     "--help",
   ]);
-  const args = { execute: false, env: "test", schemaVersion: "1.0.0" };
+  const args = { execute: false, env: "test", schemaVersion: "1.0.0", registerRedirect: true };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!known.has(token)) fail(`未知参数：${token}`);
     if (token === "--execute") {
       args.execute = true;
+      continue;
+    }
+    if (token === "--no-register-redirect") {
+      args.registerRedirect = false;
       continue;
     }
     if (token === "--help") {
@@ -98,6 +106,7 @@ function printHelp() {
       "  --base-url        目标站点，必填（不内置默认值）",
       "  --env             部署环境，只允许 test",
       "  --execute         真正写入（缺省 dry-run）",
+      "  --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS",
     ].join("\n"),
   );
 }
@@ -358,7 +367,17 @@ async function main() {
     `凭据       : CLOUDFLARE_API_TOKEN ${process.env.CLOUDFLARE_API_TOKEN ? "已设置" : "未设置（wrangler 会回退到本地登录态）"}`,
   );
 
+  const configPath = resolve(process.cwd(), "wrangler.jsonc");
+  const configText = readFileSync(configPath, "utf8");
+  const currentSlugs = readRedirectSlugs(configText, args.env);
+  const redirectPlan = args.registerRedirect
+    ? currentSlugs.includes(args.slug)
+      ? `已登记（无变化）：[${currentSlugs.join(", ")}]`
+      : `would register: [${args.slug}]（登记后：${[...currentSlugs, args.slug].join(",")}）`
+    : "跳过（--no-register-redirect）";
+
   if (!args.execute) {
+    console.log(`latest 302 白名单: ${redirectPlan}`);
     console.log("\n[dry-run] 计划如下（不打任何写入请求）：");
     for (const line of [
       `1  health     GET ${args.baseUrl}/api/health → 必须自报 environment=${args.env}`,
@@ -369,6 +388,7 @@ async function main() {
       `6  publish    r2: ${latestKey}（含 schemaVersion=${args.schemaVersion}）`,
       `7  publish    r2: ${searchIndexKey}、search/index.json`,
       `8  publish    d1: data_version + dataset.current_data_version + audit_log`,
+      `9  redirect   写 wrangler.jsonc 的 ${args.env}.vars.LATEST_REDIRECT_SLUGS ← ${args.slug}（幂等）`,
     ]) {
       console.log(`  ${line}`);
     }
@@ -385,7 +405,7 @@ async function main() {
       1,
     );
   }
-  console.log(`[1/8] health ok（environment=${reported}）`);
+  console.log(`[1/9] health ok（environment=${reported}）`);
 
   // 2) 已存在则拒绝，绝不覆盖
   const existing = await d1Query(
@@ -413,7 +433,7 @@ async function main() {
     envFlag,
     "register",
   );
-  console.log("[2/8] register ok（dataset + schema_version draft + audit_log）");
+  console.log("[2/9] register ok（dataset + schema_version draft + audit_log）");
 
   // 3) freeze
   await d1Exec(
@@ -427,7 +447,7 @@ async function main() {
     "freeze(d1)",
   );
   await r2Put(targets.bucket, schemaKey, JSON.stringify(schemaDoc), IMMUTABLE, envFlag);
-  console.log(`[3/8] freeze ok（schema_version=frozen，r2 ${schemaKey}）`);
+  console.log(`[3/9] freeze ok（schema_version=frozen，r2 ${schemaKey}）`);
 
   // 4) manifest + catalog（freeze 即入目录，hasData=false）
   const catalog = (await r2Get(targets.bucket, "index.json")) || { generatedAt: "", datasets: [] };
@@ -458,11 +478,11 @@ async function main() {
     updatedAt: now,
   };
   await r2Put(targets.bucket, manifestKey, JSON.stringify(manifest), POINTER, envFlag);
-  console.log("[4/8] catalog + manifest ok（hasData=false）");
+  console.log("[4/9] catalog + manifest ok（hasData=false）");
 
   // 5) 快照（不可变）
   await r2Put(targets.bucket, snapshotKey, snapshotBody, IMMUTABLE, envFlag);
-  console.log(`[5/8] snapshot ok（${snapshotKey}，${snapshotBody.length} B）`);
+  console.log(`[5/9] snapshot ok（${snapshotKey}，${snapshotBody.length} B）`);
 
   // 6) latest 指针（内含 schemaVersion）
   await r2Put(
@@ -478,7 +498,7 @@ async function main() {
     POINTER,
     envFlag,
   );
-  console.log(`[6/8] latest 指针 ok（schemaVersion=${args.schemaVersion}）`);
+  console.log(`[6/9] latest 指针 ok（schemaVersion=${args.schemaVersion}）`);
 
   // 7) 搜索索引 + manifest 复写（latest 已就绪）
   const published = {
@@ -521,7 +541,7 @@ async function main() {
     INDEX,
     envFlag,
   );
-  console.log("[7/8] search-index + manifest 复写 ok");
+  console.log("[7/9] search-index + manifest 复写 ok");
 
   // 8) publish 落库
   await d1Exec(
@@ -534,7 +554,29 @@ async function main() {
     envFlag,
     "publish(d1)",
   );
-  console.log("[8/8] publish ok（data_version=1）");
+  console.log("[8/9] publish ok（data_version=1）");
+
+  // 9) 登记 latest.json 302 白名单（幂等；只改这一行，不重排整个文件）
+  if (args.registerRedirect) {
+    const registered = registerRedirectSlug(configText, args.env, args.slug);
+    if (!registered.changed) {
+      console.log(
+        `[9/9] redirect 白名单已含 ${args.slug}（无变化）：[${registered.after.join(", ")}]`,
+      );
+    } else {
+      writeFileSync(configPath, registered.text, "utf8");
+      console.log(
+        `[9/9] redirect 白名单已写入 wrangler.jsonc：${args.env}.vars.LATEST_REDIRECT_SLUGS = "${registered.after.join(",")}"`,
+      );
+      console.log(
+        "      注意：vars 是部署期注入，**需要重新部署 `--env " +
+          args.env +
+          "` 才会生效**（路线 A）；若采用运行时存储（路线 B）则无需重部署。",
+      );
+    }
+  } else {
+    console.log("[9/9] redirect 白名单按 --no-register-redirect 跳过");
+  }
 
   // 收尾：公开读出口自检（不带凭据）
   console.log("\n公开读出口自检：");
@@ -552,9 +594,15 @@ async function main() {
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((error) => {
-    console.error(`✖ ${String(error.message || error)}`);
-    process.exit(1);
-  });
+/* 只在「直接执行」时跑主流程：被 import（单测）时不产生任何 side effect。 */
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((error) => {
+      console.error(`✖ ${String(error.message || error)}`);
+      process.exit(1);
+    });
+}
