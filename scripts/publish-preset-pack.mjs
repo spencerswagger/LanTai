@@ -657,17 +657,37 @@ async function main() {
     const registered = registerRedirectSlug(configText, args.env, args.slug);
     if (!registered.changed) {
       console.log(
-        `[9/9] redirect 白名单已含 ${args.slug}（无变化）：[${registered.after.join(", ")}]`,
+        `[9/11] redirect 白名单已含 ${args.slug}（无变化）：[${registered.after.join(", ")}]`,
       );
     } else {
       writeFileSync(configPath, registered.text, "utf8");
       console.log(
-        `[9/9] redirect 白名单已写入 wrangler.jsonc：${args.env}.vars.LATEST_REDIRECT_SLUGS = "${registered.after.join(",")}"`,
+        `[9/11] redirect 白名单已写入 wrangler.jsonc：${args.env}.vars.LATEST_REDIRECT_SLUGS = "${registered.after.join(",")}"`,
       );
       console.log(
-        "      注意：vars 是部署期注入，**需要重新部署 `--env " +
-          args.env +
-          "` 才会生效**（路线 A）；若采用运行时存储（路线 B）则无需重部署。",
+        `      注意：vars 是部署期注入，**需要重新部署 \`--env ${args.env}\` 才会生效**（路线 A）；若采用运行时存储（路线 B）则无需重部署。`,
+      );
+      /* Owl P2：白名单是「工作树级」修改——不提交的话，下次干净检出/部署就会丢，
+         丢了 latest.json 退回 200 指针，消费方按「包」解析会失败。这里把状态直接打出来。 */
+      let gitStatusLine = "(取不到 git 状态：不在 git 仓库或未安装 git)";
+      try {
+        gitStatusLine =
+          execFileSync("git", ["status", "--short", "wrangler.jsonc"], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          }).trim() || "(无变化)";
+      } catch {
+        /* 保持上面的兜底文案 */
+      }
+      console.log(`      git status --short wrangler.jsonc → ${gitStatusLine}`);
+      console.log(
+        "      ⚠ 这次白名单改动**必须 commit**：不提交的话，下次干净部署（CI / 别人检出）会把它丢掉，",
+      );
+      console.log(
+        "        latest.json 会退回 200 指针文档，消费方按「包」解析就会失败（安全失败，但同步会断）。",
+      );
+      console.log(
+        "        确认没丢：部署后 HEAD /latest.json 应仍为 302（第 11 步自检即为此用）。",
       );
     }
   } else {
