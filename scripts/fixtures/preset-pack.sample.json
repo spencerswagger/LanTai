@@ -1,0 +1,15 @@
+{
+  "sample-gateway": {
+    "id": "sample-gateway",
+    "name": "示例渠道（假数据，仅供脚本 dry-run）",
+    "models": {
+      "sample-model": {
+        "id": "sample-model",
+        "name": "Sample Model",
+        "description": "仅用于演示脚本形状的假模型，不含任何真实价格。",
+        "gateway": { "costRates": { "Input": 1, "Output": 2, "CacheRead": 0.1 } }
+      }
+    },
+    "gateway": { "baseUrl": "https://example.invalid/v1", "costCurrency": "CNY", "offers": [] }
+  }
+}
