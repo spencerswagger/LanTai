@@ -4,6 +4,7 @@ import {
   upsertCatalog,
   upsertSearchIndex,
 } from "../scripts/lib/index-merge.mjs";
+import { indexDrift, isValidSlug, parseGitStatus } from "../scripts/lib/preflight.mjs";
 import { readRedirectSlugs, registerRedirectSlug } from "../scripts/lib/wrangler-config.mjs";
 
 /**
@@ -161,5 +162,64 @@ describe("upsertSearchIndex（P1-1：同样的合并语义）", () => {
       ["channel-preset-pack", "1"],
       ["demo-population", "6"],
     ]);
+  });
+});
+
+describe("isValidSlug（P3-2：slug 前置校验）", () => {
+  it("合法 slug 通过（F4 口径：小写/数字开头，可含 . _ -）", () => {
+    for (const slug of ["channel-preset-pack", "a", "demo-population", "v1.2_x"]) {
+      expect(isValidSlug(slug)).toBe(true);
+    }
+  });
+
+  it("大写 / 引号 / 空格 / 前导横线 / 超长 一律拒绝", () => {
+    for (const slug of ["Channel-Preset", 'x"y', "a b", "-lead", "", "a".repeat(65)]) {
+      expect(isValidSlug(slug)).toBe(false);
+    }
+  });
+});
+
+describe("parseGitStatus（P3-1：部署前脏树检查）", () => {
+  it("干净工作树 → dirty=false", () => {
+    expect(parseGitStatus("")).toEqual({ dirty: false, paths: [], blocking: [] });
+  });
+
+  it("只有 wrangler.jsonc 被改 → 不算阻塞（脚本自己写的白名单改动属预期）", () => {
+    const out = " M wrangler.jsonc\n";
+    const parsed = parseGitStatus(out);
+    expect(parsed.dirty).toBe(true);
+    expect(parsed.blocking).toEqual([]);
+  });
+
+  it("有别处的未提交改动 → 阻塞（避免把别人的 WIP 发到 test）", () => {
+    const out = " M wrangler.jsonc\n M src/index.ts\n?? scripts/tmp.mjs\n";
+    const parsed = parseGitStatus(out);
+    expect(parsed.blocking).toEqual(["src/index.ts", "scripts/tmp.mjs"]);
+  });
+
+  it("重命名行取目标路径", () => {
+    expect(parseGitStatus("R  old.mjs -> new.mjs\n").paths).toEqual(["new.mjs"]);
+  });
+});
+
+describe("indexDrift（P3-3：目录两次读改写之间的并发保护）", () => {
+  const version = (slugs: string[]) => ({
+    generatedAt: "t",
+    datasets: slugs.map((slug: string) => ({ slug })),
+  });
+
+  it("同一版本 → 不漂移", () => {
+    const index = version(["a", "b"]);
+    expect(indexDrift(index, version(["a", "b"])).drifted).toBe(false);
+  });
+
+  it("期间多了别人的条目 → 检出漂移并给出原因", () => {
+    const result = indexDrift(version(["a", "b"]), version(["a", "b", "c"]));
+    expect(result.drifted).toBe(true);
+    expect(result.reason).toContain("a,b,c");
+  });
+
+  it("条目数相同但被替换 → 也算漂移", () => {
+    expect(indexDrift(version(["a"]), version(["z"])).drifted).toBe(true);
   });
 });

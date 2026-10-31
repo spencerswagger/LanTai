@@ -39,6 +39,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isMissingObjectError, upsertCatalog, upsertSearchIndex } from "./lib/index-merge.mjs";
+import { indexDrift, isValidSlug, parseGitStatus, SLUG_PATTERN } from "./lib/preflight.mjs";
 import { readRedirectSlugs, registerRedirectSlug } from "./lib/wrangler-config.mjs";
 
 const ALLOWED_ENVS = ["test"];
@@ -65,6 +66,7 @@ export function parseArgs(argv) {
     "--execute",
     "--no-register-redirect",
     "--no-deploy",
+    "--allow-dirty",
     "--allow-non-302",
     "--help",
   ]);
@@ -75,6 +77,7 @@ export function parseArgs(argv) {
     registerRedirect: true,
     deploy: true,
     allowNon302: false,
+    allowDirty: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -85,6 +88,10 @@ export function parseArgs(argv) {
     }
     if (token === "--no-register-redirect") {
       args.registerRedirect = false;
+      continue;
+    }
+    if (token === "--allow-dirty") {
+      args.allowDirty = true;
       continue;
     }
     if (token === "--no-deploy") {
@@ -128,6 +135,7 @@ function printHelp() {
       "  --execute         真正写入（缺省 dry-run）",
       "  --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS",
       "  --no-deploy             登记后不自动部署（vars 是部署期注入，不部署不生效）",
+      "  --allow-dirty           工作树有未提交改动时也允许部署（默认中止）",
       "  --allow-non-302         302 自检未通过时只告警不判失败",
     ].join("\n"),
   );
@@ -362,6 +370,20 @@ async function d1Exec(database, statements, envFlag, label) {
   );
 }
 
+/** 读工作树状态（只读，不写）。用于部署前拦截「把别人的 WIP 发到 test」（Owl P3-1）。 */
+function readGitStatus() {
+  try {
+    const out = execFileSync("git", ["status", "--porcelain"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return parseGitStatus(out, ["wrangler.jsonc"]);
+  } catch {
+    /* 不是 git 仓库 / 没有 git：不阻断，但要说清楚这次检查没做成。 */
+    return { dirty: false, paths: [], blocking: [], unavailable: true };
+  }
+}
+
 const sqlText = (value) =>
   value === null || value === undefined ? "NULL" : `'${String(value).replace(/'/g, "''")}'`;
 
@@ -376,6 +398,12 @@ async function main() {
     );
   }
   if (!args.pack || !args.slug) fail("必须给出 --pack 与 --slug");
+  /* P3-2：slug 会进 R2 key，也会被写进 wrangler.jsonc 的字符串值；格式不合法直接拒绝。 */
+  if (!isValidSlug(args.slug)) {
+    fail(
+      `--slug ${JSON.stringify(args.slug)} 不合法：必须匹配 ${SLUG_PATTERN}（小写字母/数字开头，可含 . _ -）`,
+    );
+  }
   if (!args.baseUrl) fail("必须给出 --base-url（脚本不内置站点地址，避免误打其他环境）");
   if (!/^https?:\/\//.test(args.baseUrl))
     fail(`--base-url 必须以 http(s):// 开头：${args.baseUrl}`);
@@ -605,6 +633,15 @@ async function main() {
   );
   // 8.5) 平台目录回写：hasData=true + currentDataVersion（对齐 src/publish/publish.ts 的行为，Owl P1-2）
   const catalogBeforePublish = await readR2Json(targets.bucket, "index.json");
+  /* Owl P3-3：第 4 步与第 8.5 步之间是两次 read-modify-write，中间可能有别人并发发布。
+     若发现当前版本 ≠ 我写下的版本，中止并提示重跑，绝不覆盖别人的条目。 */
+  const drift = indexDrift(catalogAfterFreeze, catalogBeforePublish.value);
+  if (drift.drifted) {
+    fail(
+      `${drift.reason}；为避免丢别人的目录条目已中止。数据已发布到 versions/1.json，请重跑（脚本会拒绝同 slug 重发，需人工确认后续步骤）`,
+      1,
+    );
+  }
   const catalogAfterPublish = upsertCatalog(
     catalogBeforePublish.found ? catalogBeforePublish.value : null,
     { ...catalogEntry, currentDataVersion: "1", hasData: true, updatedAt: now },
@@ -639,6 +676,20 @@ async function main() {
 
   // 10) 部署（路线 A：vars 是部署期注入，改了配置不部署 = 线上读不到）
   if (args.deploy) {
+    /* Owl P3-1：部署发的是**当前工作树**的代码，脏树会把别人的 WIP 一起推上 test。默认中止。 */
+    const gitState = readGitStatus();
+    if (gitState.unavailable) {
+      console.error(
+        "  ⚠ 读不到 git status（不在 git 仓库/未安装 git）：无法确认工作树是否干净，继续部署",
+      );
+    } else if (gitState.blocking.length > 0) {
+      const list = gitState.blocking.slice(0, 10).join(", ");
+      const message = `工作树有 ${gitState.blocking.length} 处未提交改动（${list}），部署会把它们一起发到 ${args.env}；已中止。确认要发就加 --allow-dirty`;
+      if (args.allowDirty) console.error(`  ⚠ ${message}（--allow-dirty 已放行）`);
+      else fail(message, 1);
+    } else {
+      console.log("  ✓ 工作树干净（wrangler.jsonc 的白名单改动属预期，不算脏）");
+    }
     if (!targets.workersDevDisabled) {
       console.error(
         `  ⚠ env.${args.env} 未设置 workers_dev: false：本次 deploy 会把该环境的 workers.dev 裸域重新打开（wrangler 默认行为）`,
