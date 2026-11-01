@@ -9,8 +9,16 @@
  * 纯函数（不跑 git、不跑 wrangler），便于单测：`tests/publish-preset-pack.test.ts`。
  */
 
-/** F4：providerId 正则（也是灵枢的 `preset_source_id` 口径）。 */
-export const SLUG_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
+/**
+ * slug 正则：**与平台建数据集 API 一致**（`src/routes/admin-datasets.ts:18` 的 `SLUG_RE`），
+ * 而不是灵枢 F4 的 providerId 宽版（那个允许 `.`/`_`，管的是包内 providerId）。
+ *
+ * 取严的原因（两条硬约束，都会静默出事）：
+ * 1. 平台自己的 API 只认这个正则——脚本放宽就能造出「平台会拒绝」的 slug；
+ * 2. R2 缓存分类只认 `[a-z0-9-]+`（`src/r2/keys.ts:30-35` 的 IMMUTABLE_PATTERNS / POINTER_PATTERNS）：
+ *    slug 带 `.`/`_` 时快照缓存从 31536000s 掉到 300s、指针从 60s 变 300s，读得出来但缓存语义全错且不报错。
+ */
+export const SLUG_PATTERN = "^[a-z0-9][a-z0-9-]{0,62}$";
 const SLUG_RE = new RegExp(SLUG_PATTERN);
 
 export function isValidSlug(slug) {

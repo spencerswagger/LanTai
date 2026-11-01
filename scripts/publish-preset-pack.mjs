@@ -401,7 +401,8 @@ async function main() {
   /* P3-2：slug 会进 R2 key，也会被写进 wrangler.jsonc 的字符串值；格式不合法直接拒绝。 */
   if (!isValidSlug(args.slug)) {
     fail(
-      `--slug ${JSON.stringify(args.slug)} 不合法：必须匹配 ${SLUG_PATTERN}（小写字母/数字开头，可含 . _ -）`,
+      `--slug ${JSON.stringify(args.slug)} 不合法：必须匹配 ${SLUG_PATTERN}` +
+        "（与平台 admin-datasets 的 SLUG_RE 一致，且避免 R2 缓存分类降级：带 . / _ 会让快照缓存 31536000s→300s、指针 60s→300s）",
     );
   }
   if (!args.baseUrl) fail("必须给出 --base-url（脚本不内置站点地址，避免误打其他环境）");

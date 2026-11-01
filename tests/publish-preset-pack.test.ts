@@ -166,14 +166,23 @@ describe("upsertSearchIndex（P1-1：同样的合并语义）", () => {
 });
 
 describe("isValidSlug（P3-2：slug 前置校验）", () => {
-  it("合法 slug 通过（F4 口径：小写/数字开头，可含 . _ -）", () => {
-    for (const slug of ["channel-preset-pack", "a", "demo-population", "v1.2_x"]) {
+  it("合法 slug 通过（与平台 SLUG_RE 一致：小写/数字开头，只含 a-z0-9-，总长 ≤63）", () => {
+    for (const slug of ["channel-preset-pack", "a", "demo-population", "abc123", "a".repeat(63)]) {
       expect(isValidSlug(slug)).toBe(true);
     }
   });
 
-  it("大写 / 引号 / 空格 / 前导横线 / 超长 一律拒绝", () => {
-    for (const slug of ["Channel-Preset", 'x"y', "a b", "-lead", "", "a".repeat(65)]) {
+  it("大写 / 点 / 下划线 / 引号 / 空格 / 前导横线 / 超长 一律拒绝", () => {
+    for (const slug of [
+      "Channel-Preset",
+      "v1.2",
+      "with_underscore",
+      'x"y',
+      "a b",
+      "-lead",
+      "",
+      "a".repeat(64),
+    ]) {
       expect(isValidSlug(slug)).toBe(false);
     }
   });
