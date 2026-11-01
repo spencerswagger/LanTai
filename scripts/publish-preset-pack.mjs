@@ -20,6 +20,8 @@
  *   --env             部署环境，**只允许 test**。
  *   --execute         真正写入；缺省只打印计划（dry-run）。
  *   --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS（默认会写）。
+ *   --mode publish|append   首发（默认）或**追加数据版本**：append 不重注册、不重冻 schema，
+ *                           只新增不可变快照并把指针/manifest/catalog 前进一格。
  *   --no-deploy             登记白名单后不自动部署（默认会部署：vars 是部署期注入，不部署不生效）。
  *   --allow-non-302         302 自检未通过时只告警、不判失败（默认判失败）。
  *
@@ -38,6 +40,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { buildNextManifest, isNoopReplay, nextDataVersion } from "./lib/append-version.mjs";
 import { isMissingObjectError, upsertCatalog, upsertSearchIndex } from "./lib/index-merge.mjs";
 import { indexDrift, isValidSlug, parseGitStatus, SLUG_PATTERN } from "./lib/preflight.mjs";
 import { readRedirectSlugs, registerRedirectSlug } from "./lib/wrangler-config.mjs";
@@ -65,6 +68,7 @@ export function parseArgs(argv) {
     "--env",
     "--execute",
     "--no-register-redirect",
+    "--mode",
     "--no-deploy",
     "--allow-dirty",
     "--allow-non-302",
@@ -78,6 +82,7 @@ export function parseArgs(argv) {
     deploy: true,
     allowNon302: false,
     allowDirty: false,
+    mode: "publish",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -113,6 +118,7 @@ export function parseArgs(argv) {
     if (token === "--slug") args.slug = value;
     if (token === "--title") args.title = value;
     if (token === "--schema-version") args.schemaVersion = value;
+    if (token === "--mode") args.mode = value;
     if (token === "--schema") args.schema = value;
     if (token === "--base-url") args.baseUrl = value.replace(/\/+$/, "");
     if (token === "--env") args.env = value;
@@ -134,6 +140,7 @@ function printHelp() {
       "  --env             部署环境，只允许 test",
       "  --execute         真正写入（缺省 dry-run）",
       "  --no-register-redirect  不把 slug 写进 wrangler.jsonc 的 LATEST_REDIRECT_SLUGS",
+      "  --mode publish|append   首发（默认）/ 追加数据版本（不重注册、不重冻 schema）",
       "  --no-deploy             登记后不自动部署（vars 是部署期注入，不部署不生效）",
       "  --allow-dirty           工作树有未提交改动时也允许部署（默认中止）",
       "  --allow-non-302         302 自检未通过时只告警不判失败",
@@ -387,11 +394,267 @@ function readGitStatus() {
 const sqlText = (value) =>
   value === null || value === undefined ? "NULL" : `'${String(value).replace(/'/g, "''")}'`;
 
+/**
+ * `--mode append`：给**已存在**的数据集追加一个数据版本。
+ *
+ * 与首发（`--mode publish`）的差别全部集中在「不要重注册、不要重冻 schema」：
+ *   1. 从 D1 读 dataset / schema_version / 现有 data_version（版本号来源是 D1，不是本地推断）；
+ *   2. 幂等：`latest.json` 指针的 contentHash 与本次一致 → 判定这一版已发过，不重写、不跳号；
+ *   3. 写不可变快照 `versions/{n}.json`；
+ *   4. 指针 / manifest / catalog / search-index 四处前进一格（合并语义，不覆盖别的数据集）；
+ *   5. D1 追加 data_version 行 + 更新 dataset.current_data_version + 审计。
+ * 目录读写之间做漂移检测（两次读若不同则中止）。
+ */
+async function runAppend(ctx) {
+  const { args, targets, envFlag, contentHash, snapshotBody, now, title, dryRun } = ctx;
+  const slug = args.slug;
+  const latestKey = `${slug}/latest.json`;
+  const manifestKey = `${slug}/manifest.json`;
+  const searchIndexKey = `${slug}/search-index.json`;
+
+  if (dryRun) {
+    console.log("\n[dry-run] 追加模式计划（不打任何写入请求）：");
+    for (const line of [
+      `1 health     GET ${args.baseUrl}/api/health → 必须自报 environment=${args.env}`,
+      `2 dataset    读 D1 dataset（slug=${slug}）：**已存在才可以追加**，不存在则中止`,
+      `3 version    dataVersion = max(D1 现有纯数字版本) + 1（不靠本地推断）`,
+      `4 idempotent latest.json 指针 contentHash 与本次相同 → 判定已发过，跳过写入只做自检`,
+      `5 snapshot   r2: ${slug}/versions/{n}.json（immutable）`,
+      `6 pointer    r2: ${latestKey}（dataVersion={n}，schemaVersion=沿用平台版本）`,
+      `7 manifest   r2: ${manifestKey}（dataVersions 追加 {n}、isLatest 重算）`,
+      `8 catalog    r2: index.json（只替换本 slug 条目：currentDataVersion={n}、hasData=true）`,
+      `9 search     r2: ${searchIndexKey} + search/index.json（合并语义）`,
+      `10 d1        INSERT data_version + UPDATE dataset.current_data_version + audit_log`,
+      args.deploy
+        ? `11 deploy    仅当白名单有变化时 wrangler deploy ${envFlag.join(" ")}`
+        : "11 deploy     跳过（--no-deploy）",
+      `12 verify     HEAD /${latestKey} 期望 302 → versions/{n}.json`,
+    ]) {
+      console.log(`  ${line}`);
+    }
+    console.log(
+      "\n[dry-run] 未写入任何东西，**也不会部署**（部署只在 --execute 时发生）；加 --execute 才执行。",
+    );
+    return 0;
+  }
+
+  // 1) 环境 fail-closed
+  const health = await fetchJson(`${args.baseUrl}/api/health`, "health");
+  if (health?.environment !== args.env) {
+    fail(
+      `目标环境自报 environment=${JSON.stringify(health?.environment)}，与 --env ${args.env} 不一致；已中止`,
+      1,
+    );
+  }
+  console.log(`[1/12] health ok（environment=${health.environment}）`);
+
+  // 2) 数据集必须已存在，且必须有冻结的 schema
+  const rows = await d1Query(
+    targets.database,
+    `select id, slug, title, current_schema_version, current_data_version from dataset where slug=${sqlText(slug)}`,
+    envFlag,
+  );
+  if (rows.length === 0) {
+    fail(`数据集 ${slug} 不存在：append 模式要求先走 --mode publish 首发`, 1);
+  }
+  const dataset = rows[0];
+  const schemaVersion = dataset.current_schema_version;
+  if (!schemaVersion) {
+    fail(`数据集 ${slug} 还没有冻结的 schema，不能用 append（先 publish）`, 1);
+  }
+  console.log(
+    `[2/12] dataset ok（schema_version=${schemaVersion}，current_data_version=${dataset.current_data_version ?? "null"}）`,
+  );
+
+  // 3) 版本号来源 = D1
+  const versionRows = await d1Query(
+    targets.database,
+    `select version from data_version where dataset_id=${sqlText(dataset.id)}`,
+    envFlag,
+  );
+  const next = nextDataVersion(versionRows);
+  console.log(
+    `[3/12] 下一数据版本 = ${next}（D1 现有 ${versionRows.length} 条：${versionRows.map((r) => r.version).join(",") || "无"}）`,
+  );
+
+  // 4) 幂等：指针里的 contentHash 与本次一致 → 已发过
+  const pointerRead = await readR2Json(targets.bucket, latestKey);
+  if (pointerRead.found && isNoopReplay(pointerRead.value, contentHash)) {
+    console.log(
+      `[4/12] 幂等命中：latest.json 的 contentHash 与本次相同（${contentHash.slice(0, 12)}…），跳过写入，只做 302 自检`,
+    );
+    return await finalizeAppend(ctx, pointerRead.value?.dataVersion ?? next);
+  }
+  console.log("[4/12] 幂等检查通过（这是一版新内容）");
+
+  // 5) 快照（不可变）
+  await r2Put(targets.bucket, `${slug}/versions/${next}.json`, snapshotBody, IMMUTABLE, envFlag);
+  console.log(`[5/12] snapshot ok（${slug}/versions/${next}.json，${snapshotBody.length} B）`);
+
+  // 6) 指针
+  await r2Put(
+    targets.bucket,
+    latestKey,
+    JSON.stringify({
+      dataset: slug,
+      dataVersion: next,
+      schemaVersion,
+      publishedAt: now,
+      contentHash,
+    }),
+    POINTER,
+    envFlag,
+  );
+  console.log(`[6/12] latest 指针 ok（dataVersion=${next}，schemaVersion=${schemaVersion}）`);
+
+  // 7) manifest：沿用现有结构前进一格，不重建
+  const manifestRead = await readR2Json(targets.bucket, manifestKey);
+  if (!manifestRead.found) {
+    fail(`读不到 ${manifestKey}：append 模式不重建 manifest，请先确认首发产物完整`, 1);
+  }
+  const nextManifest = buildNextManifest(manifestRead.value, {
+    version: next,
+    schemaVersion,
+    publishedAt: now,
+    title,
+  });
+  await r2Put(targets.bucket, manifestKey, JSON.stringify(nextManifest), POINTER, envFlag);
+  console.log(
+    `[7/12] manifest ok（dataVersions=${nextManifest.dataVersions.length} 条，latest=${nextManifest.latest}）`,
+  );
+
+  // 8) catalog：先读一次做漂移基线，写前再读一次比对
+  const catalogBaseline = await readR2Json(targets.bucket, "index.json");
+  const catalogEntry = {
+    slug,
+    title: title || dataset.title,
+    currentSchemaVersion: schemaVersion,
+    currentDataVersion: next,
+    hasData: true,
+    updatedAt: now,
+  };
+  const catalogNow = await readR2Json(targets.bucket, "index.json");
+  const drift = indexDrift(
+    catalogBaseline.found ? catalogBaseline.value : null,
+    catalogNow.found ? catalogNow.value : null,
+  );
+  if (drift.drifted) {
+    fail(
+      `${drift.reason}；为避免丢别人的目录条目已中止（快照已写入 versions/${next}.json，请人工确认）`,
+      1,
+    );
+  }
+  const catalogNext = upsertCatalog(catalogNow.found ? catalogNow.value : null, catalogEntry, now);
+  await r2Put(targets.bucket, "index.json", JSON.stringify(catalogNext), INDEX, envFlag);
+  console.log(
+    `[8/12] catalog ok（slug=${slug} currentDataVersion=${next} hasData=true，共 ${catalogNext.datasets.length} 个数据集）`,
+  );
+
+  // 9) search-index（合并语义）
+  const searchRead = await readR2Json(targets.bucket, "search/index.json");
+  const searchNext = upsertSearchIndex(
+    searchRead.found ? searchRead.value : null,
+    { slug, title: title || dataset.title, schemaVersion, dataVersion: next, fields: [] },
+    now,
+  );
+  await r2Put(targets.bucket, "search/index.json", JSON.stringify(searchNext), INDEX, envFlag);
+  await r2Put(
+    targets.bucket,
+    searchIndexKey,
+    JSON.stringify({
+      slug,
+      title: title || dataset.title,
+      schemaVersion,
+      dataVersion: next,
+      fields: [],
+      terms: [],
+    }),
+    INDEX,
+    envFlag,
+  );
+  console.log(`[9/12] search-index ok（共 ${searchNext.datasets.length} 条）`);
+
+  // 10) D1
+  await d1Exec(
+    targets.database,
+    [
+      `INSERT INTO data_version (id, dataset_id, version, r2_key, content_hash, source_submission_id, status, published_at) VALUES (${sqlText(crypto.randomUUID())}, ${sqlText(dataset.id)}, ${sqlText(next)}, ${sqlText(`${slug}/versions/${next}.json`)}, ${sqlText(contentHash)}, NULL, 'published', ${sqlText(now)});`,
+      `UPDATE dataset SET current_data_version=${sqlText(next)}, updated_at=${sqlText(now)} WHERE id=${sqlText(dataset.id)};`,
+      `INSERT INTO audit_log (id, actor, action, target, detail, created_at) VALUES (${sqlText(crypto.randomUUID())}, 'script:publish-preset-pack', 'data.publish', ${sqlText(`${slug}@${next}`)}, ${sqlText(JSON.stringify({ contentHash, mode: "append" }))}, ${sqlText(now)});`,
+    ],
+    envFlag,
+    "publish(d1,append)",
+  );
+  console.log(`[10/12] D1 ok（data_version=${next}，current_data_version 已更新）`);
+
+  return await finalizeAppend(ctx, next);
+}
+
+/** append 的收尾：白名单登记（幂等）+ 必要时部署 + 302 自检。 */
+async function finalizeAppend(ctx, version) {
+  const { args, envFlag, dryRun } = ctx;
+  const slug = args.slug;
+  const configPath = resolve(process.cwd(), "wrangler.jsonc");
+  const configText = readFileSync(configPath, "utf8");
+  const before = readRedirectSlugs(configText, args.env);
+  const registered = registerRedirectSlug(configText, args.env, slug);
+  if (registered.changed) {
+    writeFileSync(configPath, registered.text, "utf8");
+    console.log(
+      `[11/12] 白名单已登记 ${slug}（${args.env}.vars.LATEST_REDIRECT_SLUGS = "${registered.after.join(",")}"）`,
+    );
+    console.log(
+      "      ⚠ 这次白名单改动**必须 commit**，否则下次干净部署会丢（latest.json 退回 200 指针）",
+    );
+  } else {
+    console.log(`[11/12] 白名单已含 ${slug}（无变化）：[${before.join(", ")}]`);
+  }
+
+  const needDeploy = args.deploy && registered.changed;
+  if (needDeploy) {
+    const deployOut = await runWrangler(["deploy", ...envFlag], "deploy");
+    const versionId = /Current Version ID:\s*([0-9a-f-]+)/i.exec(deployOut)?.[1] ?? "unknown";
+    console.log(`[11/12] deploy ok（version ${versionId}）`);
+  } else if (!args.deploy) {
+    console.log("[11/12] deploy 按 --no-deploy 跳过");
+  } else {
+    console.log("[11/12] deploy 跳过（白名单无变化，无需重部署）");
+  }
+
+  const healthAfter = await fetchJson(`${args.baseUrl}/api/health`, "health(after)");
+  if (healthAfter?.environment !== args.env) {
+    fail(
+      `部署后 /api/health 自报 environment=${JSON.stringify(healthAfter?.environment)}，与 --env ${args.env} 不一致`,
+      1,
+    );
+  }
+  if (dryRun) return 0;
+
+  const probe = await fetch(`${args.baseUrl}/${slug}/latest.json`, {
+    method: "HEAD",
+    redirect: "manual",
+  });
+  const location = probe.headers.get("location") ?? "";
+  const expected = `/${slug}/versions/${version}.json`;
+  console.log(
+    `[12/12] 302 自检：HEAD /${slug}/latest.json → ${probe.status} location=${location || "(空)"}`,
+  );
+  if (!(probe.status === 302 && location.endsWith(expected))) {
+    const message = `302 未生效：期望 302 + Location ${expected}，实际 ${probe.status} + ${location || "(空)"}`;
+    if (args.allowNon302) console.error(`  ⚠ ${message}`);
+    else fail(message, 1);
+  }
+  return 0;
+}
+
 /* ----------------------------------------------------------------- main */
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
+  if (args.mode !== "publish" && args.mode !== "append") {
+    fail(`--mode ${args.mode} 不支持：只能是 publish（首发）或 append（追加数据版本）`);
+  }
   if (!ALLOWED_ENVS.includes(args.env)) {
     fail(
       `--env ${args.env} 不被允许：本脚本只允许 ${ALLOWED_ENVS.join(" / ")}（preprod、production 一律拒绝）`,
@@ -450,6 +713,19 @@ async function main() {
       ? `已登记（无变化）：[${currentSlugs.join(", ")}]`
       : `would register: [${args.slug}]（登记后：${[...currentSlugs, args.slug].join(",")}）`
     : "跳过（--no-register-redirect）";
+
+  if (args.mode === "append") {
+    return await runAppend({
+      args,
+      targets,
+      envFlag,
+      contentHash,
+      snapshotBody,
+      now,
+      title,
+      dryRun: !args.execute,
+    });
+  }
 
   if (!args.execute) {
     console.log(`latest 302 白名单: ${redirectPlan}`);
