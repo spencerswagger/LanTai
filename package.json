@@ -16,7 +16,8 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "publish:preset-pack": "node scripts/publish-preset-pack.mjs"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
