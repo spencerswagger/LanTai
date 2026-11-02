@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildNextManifest,
+  isNoopReplay,
+  nextDataVersion,
+} from "../scripts/lib/append-version.mjs";
+import {
   isMissingObjectError,
   upsertCatalog,
   upsertSearchIndex,
@@ -8,7 +13,7 @@ import { indexDrift, isValidSlug, parseGitStatus } from "../scripts/lib/prefligh
 import { readRedirectSlugs, registerRedirectSlug } from "../scripts/lib/wrangler-config.mjs";
 
 /**
- * 只测纯函数（wrangler.jsonc 白名单读写 + 平台索引合并/错误分类）。主脚本 import 了 `node:child_process`，
+ * 只测纯函数（wrangler.jsonc 白名单读写、平台索引合并/错误分类、slug/脏树/漂移、追加版本）。主脚本 import 了 `node:child_process`，
  * 在 workerd 测试环境里无法加载，因此参数解析不在这里测（由 dry-run 手工验证覆盖）。
  * 本文件不触发任何 wrangler / 网络调用。
  */
@@ -230,5 +235,106 @@ describe("indexDrift（P3-3：目录两次读改写之间的并发保护）", ()
 
   it("条目数相同但被替换 → 也算漂移", () => {
     expect(indexDrift(version(["a"]), version(["z"])).drifted).toBe(true);
+  });
+});
+
+describe("nextDataVersion（append：版本号来源是 D1，不靠本地推断）", () => {
+  it("空表 → 1", () => {
+    expect(nextDataVersion([])).toBe("1");
+    expect(nextDataVersion(null)).toBe("1");
+  });
+
+  it("首发后追加三次 → 2 / 3 / 4（不跳号、不重号）", () => {
+    const rows: { version: string }[] = [{ version: "1" }];
+    const seq: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const nextVersion = nextDataVersion(rows);
+      seq.push(nextVersion);
+      rows.push({ version: nextVersion });
+    }
+    expect(seq).toEqual(["2", "3", "4"]);
+    expect(rows.map((r) => r.version)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("非纯数字版本（preview-1）不参与编号", () => {
+    expect(nextDataVersion([{ version: "1" }, { version: "preview-1" }])).toBe("2");
+  });
+
+  it("数字大小比较按数值而不是字符串（9 → 10）", () => {
+    expect(nextDataVersion(["1", "9", "10"])).toBe("11");
+  });
+});
+
+describe("isNoopReplay（append：重复跑同一版本必须幂等）", () => {
+  const hash = "abc123";
+
+  it("指针 contentHash 与本次相同 → 判定已发过", () => {
+    expect(isNoopReplay({ contentHash: hash }, hash)).toBe(true);
+  });
+
+  it("内容不同 / 指针缺失 → 正常发布", () => {
+    expect(isNoopReplay({ contentHash: "other" }, hash)).toBe(false);
+    expect(isNoopReplay(null, hash)).toBe(false);
+    expect(isNoopReplay({}, hash)).toBe(false);
+  });
+});
+
+describe("buildNextManifest（append：manifest 前进一格，不重建）", () => {
+  const base = {
+    slug: "demo",
+    title: "演示",
+    schema: { version: "1.0.0", url: "/schemas/demo/1.0.0.json" },
+    dataVersions: [
+      { version: "1", publishedAt: "t1", isLatest: true, isPreview: false },
+      { version: "2", publishedAt: "t2", isLatest: false, isPreview: false },
+    ],
+    latest: "2",
+    preview: "2",
+    updatedAt: "t2",
+  };
+
+  it("追加 3：历史版本保留、isLatest 只有一个、latest 前移、schema 与 preview 不动", () => {
+    const next = buildNextManifest(base, {
+      version: "3",
+      schemaVersion: "1.0.0",
+      publishedAt: "t3",
+    });
+    expect(next.dataVersions?.map((item) => item.version)).toEqual(["1", "2", "3"]);
+    expect(next.dataVersions?.filter((item) => item.isLatest)).toHaveLength(1);
+    expect(next.dataVersions?.find((item) => item.isLatest)?.version).toBe("3");
+    expect(next.latest).toBe("3");
+    expect(next.schema).toEqual(base.schema);
+    expect(next.preview).toBe("2");
+    expect(next.updatedAt).toBe("t3");
+  });
+
+  it("同一版本重复前进 → 不重复追加", () => {
+    const once = buildNextManifest(base, {
+      version: "3",
+      schemaVersion: "1.0.0",
+      publishedAt: "t3",
+    });
+    const twice = buildNextManifest(once, {
+      version: "3",
+      schemaVersion: "1.0.0",
+      publishedAt: "t3b",
+    });
+    expect(twice.dataVersions?.map((item) => item.version)).toEqual(["1", "2", "3"]);
+    expect(twice.dataVersions?.filter((item) => item.isLatest)).toHaveLength(1);
+  });
+
+  it("版本按数值排序（9 之后是 10）", () => {
+    const nine = buildNextManifest(base, {
+      version: "9",
+      schemaVersion: "1.0.0",
+      publishedAt: "t",
+    });
+    const ten = buildNextManifest(nine, {
+      version: "10",
+      schemaVersion: "1.0.0",
+      publishedAt: "t",
+    });
+    expect(ten.dataVersions?.map((item) => item.version)).toEqual(["1", "2", "9", "10"]);
+    expect(ten.latest).toBe("10");
   });
 });
